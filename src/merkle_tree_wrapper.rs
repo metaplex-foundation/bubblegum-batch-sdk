@@ -6,8 +6,8 @@ use spl_concurrent_merkle_tree::changelog::ChangeLog;
 
 use crate::errors::RollupError;
 
-/// Interface that abstract [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
-/// regardless const generic parameters.
+/// Interface that abstracts [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
+/// regardless of const generic parameters.
 pub trait ITree {
     fn initialize(&mut self) -> Result<Node, ConcurrentMerkleTreeError>;
     fn append(&mut self, node: Node) -> Result<Node, ConcurrentMerkleTreeError>;
@@ -46,7 +46,7 @@ macro_rules! make_tree_impls {
 }
 
 // Building implementations of ITree
-// for all possible instances of ConcurrentMerkleTreeError.
+// for all supported combinations of tree depth and max buffer size.
 make_tree_impls!(
     (3, 8),
     (5, 8),
