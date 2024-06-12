@@ -27,7 +27,7 @@ pub fn get_voter_key(staker: &Pubkey, voter_authority: &Pubkey) -> Pubkey {
 /// Account that hold additional merkle tree config,
 /// aka tree_authority PDA account previously initialized by `prepare_tree`.
 pub fn derive_tree_config_account(tree_data_account: &Pubkey) -> Pubkey {
-    let (tree_authority, _) =
+    let (tree_authority, _bump) =
         Pubkey::find_program_address(&[tree_data_account.as_ref()], &bubblegum::id());
     tree_authority
 }

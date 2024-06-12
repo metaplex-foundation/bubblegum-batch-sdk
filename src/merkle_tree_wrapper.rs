@@ -283,6 +283,11 @@ fn calc_canopy_size(canopy_depth: u32) -> usize {
     }
 }
 
+pub fn calc_tree_data_account_size(max_depth: u32, max_buffer_size: u32, canopy_depth: u32) -> Option<usize> {
+    calc_merkle_tree_size(max_depth, max_buffer_size, canopy_depth)
+        .map(|s| spl_account_compression::state::CONCURRENT_MERKLE_TREE_HEADER_SIZE_V1 + s)
+}
+
 pub fn restore_canopy_depth_from_buffer(canopy_buffer_size: u32) -> u32 {
     if canopy_buffer_size < 64 {
         0

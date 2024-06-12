@@ -23,11 +23,11 @@ pub struct RollupBuilder {
     /// Public key of solana account that contains merkle data
     pub tree_account: Pubkey,
     /// depth of merkle tree
-    max_depth: u32,
+    pub max_depth: u32,
     /// Size of changelogs buffer = the maximum amount of concurrent changes to merkel tree
-    max_buffer_size: u32,
+    pub max_buffer_size: u32,
     /// level of merkle tree (not counting root) that contains canopy leaf nodes
-    canopy_depth: u32,
+    pub canopy_depth: u32,
     /// encapsulates [ConcurrentMerkleTree]
     merkle: Box<dyn ITree>,
     /// See [Rollup::rolled_mints]

@@ -1,5 +1,9 @@
 # Rollup SDK
 
+See [Integration tests](it.md)
+
+---
+
 This library allows to easily create a rollup (a compressed NFT tree that is initialized off-chain).
 
 The [merkle tree](https://developers.metaplex.com/bubblegum/concurrent-merkle-trees)
@@ -13,7 +17,7 @@ Example of complete rollup creation flow:
 let owner: Keypair = todo!("read/initialize tree owner key pair");
 let staker: Keypair = todo!("read MPLX staker key pair");
 
-let url = "http://localhost::8899".to_string(); // Solana RPC node address
+let url = "http://127.0.0.1::8899".to_string(); // Solana RPC node address
 let timeout = Duration::from_secs(1);
 let solana_client = Arc::new(RpcClient::new_with_timeout(url, timeout));
 
