@@ -1,5 +1,7 @@
+use std::borrow::Borrow;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use mpl_bubblegum::accounts::MerkleTree;
 use mpl_bubblegum::instructions::{AddCanopyBuilder, FinalizeTreeWithRootBuilder, PrepareTreeBuilder};
 use mpl_bubblegum::types::{ConcurrentMerkleTreeHeaderData, LeafSchema};
@@ -11,7 +13,9 @@ use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
 
 use crate::errors::RollupError;
-use crate::merkle_tree_wrapper::{calc_merkle_tree_size, calc_tree_data_account_size, restore_canopy_depth_from_buffer};
+use crate::merkle_tree_wrapper::{
+    calc_merkle_tree_size, calc_tree_data_account_size, restore_canopy_depth_from_buffer,
+};
 use crate::model::{RolledMintInstruction, Rollup};
 use crate::pubkey_util;
 use crate::rollup_builder::RollupBuilder;
@@ -25,13 +29,22 @@ const CANOPY_NODES_PER_TX: usize = 24;
 
 /// The main controll point for rollup creation flows.
 pub struct RollupClient {
-    client: Arc<RpcClient>,
+    client: Arc<dyn AbstractSolanaClient>,
 }
 
 impl RollupClient {
     /// Creates a new instance that allows to create rollups.
     pub fn new(client: Arc<RpcClient>) -> RollupClient {
         RollupClient { client }
+    }
+
+    /// Mostly for testing purposes
+    pub fn new_from_abstract_solana_client(client: Arc<dyn AbstractSolanaClient>) -> RollupClient {
+        RollupClient { client }
+    }
+
+    pub fn client(&self) -> &dyn AbstractSolanaClient {
+        self.client.borrow()
     }
 
     /// Prepares solana accounts (space) for future merkle tree.
@@ -44,7 +57,7 @@ impl RollupClient {
     /// * `max_depth` - depth of desired merkle tree. Should be in range: TODO: add
     /// * `max_buf_size` - maximum buffer size which defines max. num. of concurrent changes
     /// * `canopy_depth` - desired depth of canopy tree
-    /// 
+    ///
     /// Note, by design, an asset leaf cannot require more than 17 proofs, which means
     /// that for a big trees (bigger than 17), there should be a canopy at least
     /// of (tree depth - 17) size.
@@ -56,7 +69,6 @@ impl RollupClient {
         max_buf_size: u32,
         canopy_depth: u32,
     ) -> std::result::Result<Signature, RollupError> {
-
         if canopy_depth >= max_depth {
             return Err(RollupError::IllegalArgumets(
                 "Canopy depth should be less than tree maximum depth".to_string(),
@@ -65,9 +77,9 @@ impl RollupClient {
 
         let required_canopy = max_depth.saturating_sub(bubblegum::state::MAX_ACC_PROOFS_SIZE);
         if canopy_depth < required_canopy {
-            return Err(RollupError::IllegalArgumets(
-                format!("Three of depth={max_depth} reqiores as least canopy={required_canopy}"),
-            ));
+            return Err(RollupError::IllegalArgumets(format!(
+                "Three of depth={max_depth} reqiores as least canopy={required_canopy}"
+            )));
         }
 
         let merkle_tree_size = calc_tree_data_account_size(max_depth, max_buf_size, canopy_depth)
@@ -111,9 +123,37 @@ impl RollupClient {
         Ok(tx_signature)
     }
 
+    pub async fn make_acc(&self, tree_creator: &Keypair,) -> std::result::Result<Signature, RollupError> {
+        let new_acc = Keypair::new();
+        let tx = Transaction::new_signed_with_payer(
+            &[
+                system_instruction::create_account(
+                    // acquire space for future merkle tree
+                    &tree_creator.pubkey(),
+                    &new_acc.pubkey(),
+                    self.client
+                        .get_minimum_balance_for_rent_exemption(100)
+                        .await?,
+                    1 as u64,
+                    &spl_account_compression::id(),
+                ),
+            ],
+            Some(&tree_creator.pubkey()),
+            &[tree_creator, &new_acc],
+            self.client.get_latest_blockhash().await?,
+        );
+
+        let tx_signature = self.client.send_and_confirm_transaction(&tx).await?;
+
+        Ok(tx_signature)
+    }
+
     /// Creates a rollup builder object - a convenient wrapper for adding assets to rollups.
-    pub async fn create_rollup_builder(&self, tree_account: &Pubkey) -> std::result::Result<RollupBuilder, RollupError> {
-        let (max_depth, max_buffer_size, canopy_depth) = read_prepared_tree_size(&self.client, &tree_account).await?;
+    pub async fn create_rollup_builder(
+        &self,
+        tree_account: &Pubkey,
+    ) -> std::result::Result<RollupBuilder, RollupError> {
+        let (max_depth, max_buffer_size, canopy_depth) = read_prepared_tree_size(self.client.borrow(), &tree_account).await?;
         RollupBuilder::new(tree_account.clone(), max_depth, max_buffer_size, canopy_depth)
     }
 
@@ -121,7 +161,7 @@ impl RollupClient {
     /// This can be useful if you have made your previuos builder into rollup, saved it into JSON,
     /// but then decided to add more assets.
     pub async fn restore_rollup_builder(&self, rollup: &Rollup) -> std::result::Result<RollupBuilder, RollupError> {
-        let (max_depth, max_buffer_size, canopy_depth) = read_prepared_tree_size(&self.client, &rollup.tree_id).await?;
+        let (max_depth, max_buffer_size, canopy_depth) = read_prepared_tree_size(self.client.borrow(), &rollup.tree_id).await?;
         let mut rollup_builder = RollupBuilder::new(rollup.tree_id, max_depth, max_buffer_size, canopy_depth)?;
 
         for rolled_mint in &rollup.rolled_mints {
@@ -145,7 +185,6 @@ impl RollupClient {
         Ok(rollup_builder)
     }
 
-
     /// Writes given rollup to the solana tree account.
     pub async fn finalize_tree(
         &self,
@@ -155,14 +194,14 @@ impl RollupClient {
         tree_creator: &Keypair,
         staker: &Keypair,
     ) -> Result<Signature, RollupError> {
-        let rollup = rollup_builder.build_rollup();
 
         let tree_config_account = pubkey_util::derive_tree_config_account(&rollup_builder.tree_account);
 
-        let canopy_depth = parse_tree_size(&self.client.get_account(&rollup.tree_id).await?)?.2;
+        let canopy_depth = parse_tree_size(&self.client.get_account(&rollup_builder.tree_account).await?)?.2;
         if canopy_depth > 0 {
             let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
             let canopy_leaves = &rollup_builder.canopy_leaves;
+
             for (ind, chunk) in canopy_leaves.chunks(CANOPY_NODES_PER_TX).enumerate() {
                 let add_canopy_inst = AddCanopyBuilder::new()
                     .tree_config(tree_config_account)
@@ -186,6 +225,7 @@ impl RollupClient {
             }
         }
 
+        let rollup = rollup_builder.build_rollup();
         let finalize_instruction = FinalizeTreeWithRootBuilder::new()
             .payer(tree_creator.pubkey())
             .merkle_tree(rollup.tree_id)
@@ -213,16 +253,16 @@ impl RollupClient {
             self.client.get_latest_blockhash().await?,
         );
 
+
         let signature = self.client.send_and_confirm_transaction(&tx).await?;
 
         Ok(signature)
     }
-
 }
 
 /// Fetches max depth, max buffer size and canopy_depth for a tree identified by given account.
 async fn read_prepared_tree_size(
-    client: &RpcClient,
+    client: &dyn AbstractSolanaClient,
     tree_accout: &Pubkey,
 ) -> std::result::Result<(u32, u32, u32), RollupError> {
     let account = client.get_account(tree_accout).await?;
@@ -245,4 +285,58 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
     let canopy_buf_size = merkle_tree.serialized_tree.len() - merkel_tree_size;
     let canopy_size = restore_canopy_depth_from_buffer(canopy_buf_size as u32);
     Ok((max_depth, max_buffer_size, canopy_size))
+}
+
+
+#[async_trait]
+pub trait AbstractSolanaClient {
+    async fn get_account(&self, pubkey: &Pubkey) -> std::result::Result<Account, RollupError>;
+
+    async fn get_balance(&self, pubkey: &Pubkey) -> std::result::Result<u64, RollupError>;
+
+    async fn get_minimum_balance_for_rent_exemption(
+        &self,
+        data_len: usize,
+    ) -> std::result::Result<u64, RollupError>;
+
+    async fn get_latest_blockhash(&self) -> std::result::Result<solana_program::hash::Hash, RollupError>;
+
+    async fn send_and_confirm_transaction(
+        &self,
+        transaction: &Transaction,
+    ) -> std::result::Result<Signature, RollupError>;
+}
+
+#[async_trait]
+impl AbstractSolanaClient for RpcClient {
+    async fn get_account(&self, pubkey: &Pubkey) -> std::result::Result<Account, RollupError> {
+        let result = self.get_account(pubkey).await?;
+        Ok(result)
+    }
+
+    async fn get_balance(&self, pubkey: &Pubkey) -> std::result::Result<u64, RollupError> {
+        let result = self.get_balance(pubkey).await?;
+        Ok(result) 
+    }
+
+    async fn get_minimum_balance_for_rent_exemption(
+        &self,
+        data_len: usize,
+    ) -> std::result::Result<u64, RollupError> {
+        let result = self.get_minimum_balance_for_rent_exemption(data_len).await?;
+        Ok(result)
+    }
+
+    async fn get_latest_blockhash(&self) -> std::result::Result<solana_program::hash::Hash, RollupError> {
+        let result = self.get_latest_blockhash().await?;
+        Ok(result)
+    }
+
+    async fn send_and_confirm_transaction(
+        &self,
+        transaction: &Transaction,
+    ) -> std::result::Result<Signature, RollupError> {
+        let result = self.send_and_confirm_transaction(transaction).await?;
+        Ok(result)
+    }
 }
