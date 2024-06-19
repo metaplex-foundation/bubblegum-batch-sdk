@@ -13,12 +13,12 @@ pub fn get_registrar_key() -> Pubkey {
 }
 
 /// ## Arguments
-/// `staker` -
-/// `voter_authority` - ??? in tests it's the payer
-pub fn get_voter_key(staker: &Pubkey, voter_authority: &Pubkey) -> Pubkey {
+/// `registrar_account` - registrar
+/// `voter_authority` - payer
+pub fn get_voter_key(registrar_account: &Pubkey, voter_authority: &Pubkey) -> Pubkey {
     let (voter_key, _voter_bump) = Pubkey::find_program_address(
         &[
-            staker.to_bytes().as_ref(), // staker or tree_creator?
+            registrar_account.to_bytes().as_ref(), // staker or tree_creator?
             b"voter".as_ref(),
             voter_authority.to_bytes().as_ref(),
         ],

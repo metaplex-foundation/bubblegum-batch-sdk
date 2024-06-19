@@ -3,6 +3,7 @@ pub mod digital_asset;
 pub mod tree;
 pub mod tx_builder;
 pub mod my_test_context;
+pub mod test_validator_runner;
 
 use anchor_lang::{self, InstructionData, ToAccountMetas};
 use async_trait::async_trait;

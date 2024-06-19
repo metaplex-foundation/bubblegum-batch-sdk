@@ -24,3 +24,6 @@ solana-test-validator --reset \
 ```
 
 3) Run test `test_prepare_tree`
+
+
+solana-test-validator --reset   --bpf-program cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK solana-contracts/spl_account_compression.so   --bpf-program noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV solana-contracts/spl_noop.so   --bpf-program BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY mpl-bubblegum/programs/.bin/bubblegum.so --account 7KXf5wqxoDE9QTDdVysHULruroRCemWU9WQEyDcRkUFC /home/stas/dev/proj/rollup-sdk/test_data/accounts/registrar.json --account GnbsGti24qZNiASqysqcwmb2nyk49U8Eaoc7REhF62dJ /home/stas/dev/proj/rollup-sdk/test_data/accounts/voter.json

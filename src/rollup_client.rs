@@ -7,6 +7,7 @@ use mpl_bubblegum::instructions::{AddCanopyBuilder, FinalizeTreeWithRootBuilder,
 use mpl_bubblegum::types::{ConcurrentMerkleTreeHeaderData, LeafSchema};
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use solana_sdk::instruction::AccountMeta;
 use solana_sdk::signature::Signature;
 use solana_sdk::signer::keypair::Keypair;
 use solana_sdk::signer::Signer;
@@ -63,6 +64,7 @@ impl RollupClient {
     /// of (tree depth - 17) size.
     pub async fn prepare_tree(
         &self,
+        payer: &Keypair,
         tree_creator: &Keypair,
         tree_data_account: &Keypair,
         max_depth: u32,
@@ -91,7 +93,7 @@ impl RollupClient {
             &[
                 system_instruction::create_account(
                     // acquire space for future merkle tree
-                    &tree_creator.pubkey(),
+                    &payer.pubkey(),
                     &tree_data_account.pubkey(),
                     self.client
                         .get_minimum_balance_for_rent_exemption(merkle_tree_size)
@@ -111,8 +113,8 @@ impl RollupClient {
                     .system_program(system_program::id())
                     .instruction(),
             ],
-            Some(&tree_creator.pubkey()),
-            &[tree_creator, tree_data_account],
+            Some(&payer.pubkey()),
+            &[payer, tree_creator, tree_data_account],
             self.client.get_latest_blockhash().await?,
         );
 
@@ -186,8 +188,11 @@ impl RollupClient {
     }
 
     /// Writes given rollup to the solana tree account.
+    /// ## Arguments
+    /// * `staker` - can be same as payer
     pub async fn finalize_tree(
         &self,
+        payer: &Keypair,
         metadata_url: &str,
         metadata_hash: &str,
         rollup_builder: &RollupBuilder,
@@ -226,21 +231,29 @@ impl RollupClient {
         }
 
         let rollup = rollup_builder.build_rollup();
+        // We're just using emaining_accounts to send proofs because they are of the same type
+        let remaining_accounts = rollup_builder.merkle.get_rightmost_proof().iter()
+            .map(|proof| AccountMeta {
+                pubkey: Pubkey::new_from_array(proof.clone()),
+                is_signer: false,
+                is_writable: false,
+            })
+            .collect::<Vec<_>>();
         let finalize_instruction = FinalizeTreeWithRootBuilder::new()
-            .payer(tree_creator.pubkey())
+            .payer(payer.pubkey())
             .merkle_tree(rollup.tree_id)
             .tree_config(tree_config_account)
             .staker(staker.pubkey())
             .fee_receiver(bubblegum::state::FEE_RECEIVER)
             .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
             .registrar(pubkey_util::get_registrar_key())
-            // TODO-XXX: voter_authority is payer, right? this means in this context it's tree_creator?
-            .voter(pubkey_util::get_voter_key(&staker.pubkey(), &tree_creator.pubkey()))
+            .voter(pubkey_util::get_voter_key(&pubkey_util::get_registrar_key(), &payer.pubkey()))
             .rightmost_root(rollup.merkle_root)
             .rightmost_leaf(rollup.last_leaf_hash)
             .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
             .metadata_url(metadata_url.to_string())
             .metadata_hash(metadata_hash.to_string())
+            .add_remaining_accounts(&remaining_accounts)
             .log_wrapper(spl_noop::id())
             .compression_program(spl_account_compression::id())
             .system_program(system_program::id())
@@ -249,7 +262,7 @@ impl RollupClient {
         let tx = Transaction::new_signed_with_payer(
             &[finalize_instruction],
             Some(&tree_creator.pubkey()),
-            &[tree_creator, staker],
+            &[payer, tree_creator, staker],
             self.client.get_latest_blockhash().await?,
         );
 
