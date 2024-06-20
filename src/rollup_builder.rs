@@ -29,11 +29,11 @@ pub struct RollupBuilder {
     /// level of merkle tree (not counting root) that contains canopy leaf nodes
     pub canopy_depth: u32,
     /// encapsulates [ConcurrentMerkleTree]
-    merkle: Box<dyn ITree>,
+    pub merkle: Box<dyn ITree>,
     /// See [Rollup::rolled_mints]
-    mints: Vec<RolledMintInstruction>,
+    pub mints: Vec<RolledMintInstruction>,
     /// See [Rollup::last_leaf_hash]
-    last_leaf_hash: [u8; 32],
+    pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
     pub(crate) canopy_leaves: Vec<[u8; 32]>,
 }
@@ -68,7 +68,13 @@ impl RollupBuilder {
     /// - `delegate` - ???
     /// - `metadata_args` - asset details as [MetadataArgs]
     pub fn add_asset(&mut self, owner: &Pubkey, delegate: &Pubkey, metadata_args: &MetadataArgs) {
-        let metadata_args_hash = hash_metadata_args(self.mints.len() as u64, &self.tree_account, owner, delegate, metadata_args);
+        let metadata_args_hash = hash_metadata_args(
+            self.mints.len() as u64,
+            &self.tree_account,
+            owner,
+            delegate,
+            metadata_args,
+        );
         let MetadataArgsHash {
             id,
             nonce,
@@ -127,7 +133,6 @@ impl RollupBuilder {
             max_buffer_size: self.max_buffer_size,
         }
     }
-
 }
 
 /// Return value for asset leaf hasher function (Helper type that helps to simplify code)
@@ -140,10 +145,16 @@ struct MetadataArgsHash {
 }
 
 /// Hashes given merkle tree leaf asset.
-/// 
+///
 /// ## Arguments
 /// `nonce` - should be `rollup_builder.mints.len() as u64`
-fn hash_metadata_args(nonce: u64, tree_account: &Pubkey, owner: &Pubkey, delegate: &Pubkey, metadata_args: &MetadataArgs) -> MetadataArgsHash {
+fn hash_metadata_args(
+    nonce: u64,
+    tree_account: &Pubkey,
+    owner: &Pubkey,
+    delegate: &Pubkey,
+    metadata_args: &MetadataArgs,
+) -> MetadataArgsHash {
     let id: Pubkey = mpl_bubblegum::utils::get_asset_id(&tree_account, nonce);
 
     let metadata_args_hash = keccak::hashv(&[metadata_args.try_to_vec().unwrap().as_slice()]);
@@ -234,7 +245,7 @@ mod test {
 
         let mut rollup_builder = RollupBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
 
-        for i in 1u8 ..= 32 {
+        for i in 1u8..=32 {
             let ma = test_metadata_args(i);
             rollup_builder.add_asset(&owner, &delegate, &ma);
         }
@@ -242,12 +253,40 @@ mod test {
         let canopy_4 = &rollup_builder.canopy_leaves;
         assert_eq!(canopy_4.len(), 16);
 
-        let leaf_1_hash = hash_metadata_args(0, &rollup_builder.tree_account, &owner, &delegate, &test_metadata_args(1u8)).hashed_leaf;
-        let leaf_2_hash = hash_metadata_args(1, &rollup_builder.tree_account, &owner, &delegate, &test_metadata_args(2u8)).hashed_leaf;
+        let leaf_1_hash = hash_metadata_args(
+            0,
+            &rollup_builder.tree_account,
+            &owner,
+            &delegate,
+            &test_metadata_args(1u8),
+        )
+        .hashed_leaf;
+        let leaf_2_hash = hash_metadata_args(
+            1,
+            &rollup_builder.tree_account,
+            &owner,
+            &delegate,
+            &test_metadata_args(2u8),
+        )
+        .hashed_leaf;
         assert_eq!(canopy_4[0], keccak::hashv(&[&leaf_1_hash, &leaf_2_hash]).to_bytes());
 
-        let leaf_31_hash = hash_metadata_args(30, &rollup_builder.tree_account, &owner, &delegate, &test_metadata_args(31u8)).hashed_leaf;
-        let leaf_32_hash = hash_metadata_args(31, &rollup_builder.tree_account, &owner, &delegate, &test_metadata_args(32u8)).hashed_leaf;
+        let leaf_31_hash = hash_metadata_args(
+            30,
+            &rollup_builder.tree_account,
+            &owner,
+            &delegate,
+            &test_metadata_args(31u8),
+        )
+        .hashed_leaf;
+        let leaf_32_hash = hash_metadata_args(
+            31,
+            &rollup_builder.tree_account,
+            &owner,
+            &delegate,
+            &test_metadata_args(32u8),
+        )
+        .hashed_leaf;
         assert_eq!(canopy_4[15], keccak::hashv(&[&leaf_31_hash, &leaf_32_hash]).to_bytes());
     }
 

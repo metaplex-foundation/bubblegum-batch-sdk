@@ -14,8 +14,8 @@ is fully compatible with [Metaplex Bubblegum](https://developers.metaplex.com/bu
 Example of complete rollup creation flow:
 
 ```rust
-let owner: Keypair = todo!("read/initialize tree owner key pair");
-let staker: Keypair = todo!("read MPLX staker key pair");
+let payer: Keypair = todo!("the one who pays for the rollup");
+let staker: Keypair = todo!("can be same as payer");
 
 let url = "http://127.0.0.1::8899".to_string(); // Solana RPC node address
 let timeout = Duration::from_secs(1);
@@ -25,17 +25,15 @@ let rollup_client = RollupClient::new(solana_client);
 
 // Account for a merkle tree data we are going to create
 let tree_data_account = Keypair::new();
-// Account for additional config data required by bubblegum solana program
-let tree_config_account = Keypair::new();
 
 // Creating Solana account for storing tree and initializing it.
 // Will prepare merkle tree with depth 10 (not counting root),
 // 32 cells changelog buffer (max 32 concurrent changes),
 // and canopy tree with depth 4 (not counting root).
 rollup_client.prepare_tree(
-    &owner,
+    &payer,
+    &tree_creator,
     &tree_data_account.pubkey(),
-    &tree_config_account.pubkey(),
     10, // tree depth
     32, // maximum concurrent changes
     4   // canopy tree depth
@@ -64,10 +62,10 @@ let metadata_hash: String = todo("hash of persisted rollup");
 // Finalize rollup in solana:
 // "move" offchain merkle tree along with the canopy tree to the account.
 rollup_client.finalize_tree(
+    &payer,
     &metadata_url,
     &metadata_hash,
     &rollup_builder,
-    &tree_config_account,
     &tree_creator,
     &staker
 )?;

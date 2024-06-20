@@ -1,10 +1,22 @@
 # Integration tests
 
-1) Prepare dependency.
+For the integration tests we use `solana-test-validator` instead of `BankClient`,
+because the `BankClient` is less stable.
 
-At the moment, we use fork of bubblegum + account compression from a private repository.
+1) Make sure you have [Solana CLI](https://docs.solanalabs.com/cli/install) installed on your machine.
+It should be available in the PATH.
+If you don't want to have it the PATH, or you have multiple SOlana CLI installations and want to use specific one,
+set `SOLANA_HOME` env. variable (it will be picked up by tests), e.g.
 
+```shell
+export SOLANA_HOME=/home/stas/dev/sdk/solana-1.18.15/bin
 ```
+
+2) Prepare dependency.
+
+Note: At the moment, while it is still a development phase, we use fork of bubblegum + account compression from a private repository.
+
+```shell
 git clone git@github.com:n00m4d/mpl-bubblegum.git
 cd mpl-bubblegum
 git switch -c feature/cleanup origin/feature/cleanup
@@ -14,13 +26,4 @@ pnpm programs:build
 ./configs/scripts/program/temp_prep_commands.sh
 ```
 
-2) Run solana-test-validator
-
-```shell
-solana-test-validator --reset \
-  --bpf-program cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK mpl-bubblegum/account-compression/target/deploy/spl_account_compression.so \
-  --bpf-program noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV mpl-bubblegum/programs/.bin/spl_noop.so \
-  --bpf-program BGUMAp9Gq7iTEuizy4pqaxsTyUCBK68MDfK752saRPUY mpl-bubblegum/programs/.bin/bubblegum.so
-```
-
-3) Run test `test_prepare_tree`
+3) Run `cargo test`

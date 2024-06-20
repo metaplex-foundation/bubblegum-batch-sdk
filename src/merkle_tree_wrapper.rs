@@ -15,6 +15,7 @@ pub trait ITree {
     fn change_logs(&self, ind: usize) -> Box<dyn IChangeLog>;
     fn sequence_number(&self) -> u64;
     fn get_root(&self) -> [u8; 32];
+    fn get_rightmost_proof(&self) -> &[[u8;32]];
 }
 
 #[macro_export]
@@ -39,6 +40,9 @@ macro_rules! make_tree_impls {
             }
             fn get_root(&self) -> [u8; 32] {
                 self.get_root()
+            }
+            fn get_rightmost_proof(&self) -> &[[u8;32]] {
+                &self.rightmost_proof.proof
             }
         }
     )*
