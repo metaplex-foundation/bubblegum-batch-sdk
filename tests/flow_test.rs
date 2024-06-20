@@ -1,40 +1,46 @@
 mod utils;
 
-use std::{str::FromStr, sync::Arc, time::{Duration, SystemTime, UNIX_EPOCH}};
 use bubblegum::state::{REALM, REALM_GOVERNING_MINT};
-use mplx_staking_states::state::{DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR, VOTER_DISCRIMINATOR};
-use rollup_sdk::rollup_client::RollupClient;
 use mpl_bubblegum::types::MetadataArgs;
+use mplx_staking_states::state::{
+    DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR,
+    VOTER_DISCRIMINATOR,
+};
+use rollup_sdk::rollup_client::RollupClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{account::AccountSharedData, pubkey::Pubkey, signature::Keypair, signer::Signer};
+use std::{
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tokio::time::sleep;
 use utils::test_validator_runner::{AccountInit, ContractToDeploy, TestValidatorRunner};
 
 const TREE_CREATOR: [u8; 64] = [
-    71, 169, 21, 15, 207, 98, 125, 163, 177, 187, 118, 170, 54, 221, 34, 196, 99, 60, 80, 127, 202,
-    61, 72, 174, 135, 151, 214, 203, 102, 106, 206, 18, 237, 231, 72, 189, 103, 136, 149, 222, 87,
-    237, 87, 30, 54, 80, 103, 206, 213, 64, 193, 64, 100, 222, 54, 143, 251, 178, 188, 50, 54, 56,
-    87, 36,
+    71, 169, 21, 15, 207, 98, 125, 163, 177, 187, 118, 170, 54, 221, 34, 196, 99, 60, 80, 127, 202, 61, 72, 174, 135,
+    151, 214, 203, 102, 106, 206, 18, 237, 231, 72, 189, 103, 136, 149, 222, 87, 237, 87, 30, 54, 80, 103, 206, 213,
+    64, 193, 64, 100, 222, 54, 143, 251, 178, 188, 50, 54, 56, 87, 36,
 ];
 
 pub const TREE_KEY: [u8; 64] = [
-    48, 111, 197, 10, 137, 43, 207, 116, 57, 156, 24, 173, 58, 78, 235, 43, 129, 29, 81, 185, 140,
-    40, 63, 174, 159, 208, 160, 246, 232, 151, 60, 201, 67, 162, 242, 249, 66, 65, 247, 140, 222,
-    107, 100, 127, 252, 98, 10, 242, 239, 118, 198, 161, 87, 129, 14, 235, 76, 50, 9, 153, 52, 233,
-    11, 108,
+    48, 111, 197, 10, 137, 43, 207, 116, 57, 156, 24, 173, 58, 78, 235, 43, 129, 29, 81, 185, 140, 40, 63, 174, 159,
+    208, 160, 246, 232, 151, 60, 201, 67, 162, 242, 249, 66, 65, 247, 140, 222, 107, 100, 127, 252, 98, 10, 242, 239,
+    118, 198, 161, 87, 129, 14, 235, 76, 50, 9, 153, 52, 233, 11, 108,
 ];
 
 // Just a predefined payer to be consistent betwwen test runs
-const TEST_PAYER: &[u8] = &[180, 198, 251, 142, 71, 181, 136, 26, 203, 166, 231, 34, 223, 177, 9, 146, 247, 218, 42, 147, 89, 80, 190, 93, 82, 213, 244, 111, 208, 225, 229, 30, 245, 66, 48, 225, 173, 117, 132, 129, 214, 176, 176, 39, 241, 9, 144, 79, 223, 161, 99, 89, 97, 163, 63, 51, 106, 80, 233, 168, 246, 140, 97, 17];
+const TEST_PAYER: &[u8] = &[
+    180, 198, 251, 142, 71, 181, 136, 26, 203, 166, 231, 34, 223, 177, 9, 146, 247, 218, 42, 147, 89, 80, 190, 93, 82,
+    213, 244, 111, 208, 225, 229, 30, 245, 66, 48, 225, 173, 117, 132, 129, 214, 176, 176, 39, 241, 9, 144, 79, 223,
+    161, 99, 89, 97, 163, 63, 51, 106, 80, 233, 168, 246, 140, 97, 17,
+];
 
 #[tokio::test]
+#[cfg(not(any(skip_integration_tests)))]
 async fn test_complete_rollup_flow() {
     // Preparing account for test
-    let (
-        payer,
-        tree_creator,
-        tree_data_account, registrar, voter
-    ) = prepare_test_accounts();
+    let (payer, tree_creator, tree_data_account, registrar, voter) = prepare_test_accounts();
 
     // Launching solana-test-validator with registrar and voter test accounts
     let mut tvr = TestValidatorRunner::new();
@@ -46,7 +52,8 @@ async fn test_complete_rollup_flow() {
     });
     tvr.add_program(&ContractToDeploy {
         addr: spl_account_compression::ID,
-        path: "../mpl-bubblegum/solana-program-library/account-compression/target/deploy/spl_account_compression.so".to_string(),
+        path: "../mpl-bubblegum/solana-program-library/account-compression/target/deploy/spl_account_compression.so"
+            .to_string(),
     });
     tvr.add_program(&ContractToDeploy {
         addr: spl_noop::ID,
@@ -59,15 +66,25 @@ async fn test_complete_rollup_flow() {
     let solana_client = Arc::new(RpcClient::new_with_timeout(url, Duration::from_secs(1)));
 
     // Waiting for server to start
-    await_for(10,Duration::from_secs(1), || {solana_client.get_health()}).await.unwrap();
+    await_for(10, Duration::from_secs(1), || solana_client.get_health())
+        .await
+        .unwrap();
 
-    { // Fund test accounts and wait for transaction to be commited.
-        let airdrop_sig_1 = solana_client.request_airdrop(&payer.pubkey(), 20000000 * 10000).await.unwrap();
-        let airdrop_sig_2 = solana_client.request_airdrop(&tree_creator.pubkey(), 20000000 * 10000).await.unwrap();
-        while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap() &&
-            solana_client.confirm_transaction(&airdrop_sig_2).await.unwrap()) {
-                sleep(Duration::from_secs(1)).await;
-        };
+    {
+        // Fund test accounts and wait for transaction to be commited.
+        let airdrop_sig_1 = solana_client
+            .request_airdrop(&payer.pubkey(), 20000000 * 10000)
+            .await
+            .unwrap();
+        let airdrop_sig_2 = solana_client
+            .request_airdrop(&tree_creator.pubkey(), 20000000 * 10000)
+            .await
+            .unwrap();
+        while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap()
+            && solana_client.confirm_transaction(&airdrop_sig_2).await.unwrap())
+        {
+            sleep(Duration::from_secs(1)).await;
+        }
     }
 
     // Actual Rollup client starts here
@@ -107,12 +124,12 @@ async fn test_complete_rollup_flow() {
 }
 
 /// Helps to wait for an async functionality to startup.
-async fn await_for<T,E,F,Fut>(attempts: u32, interval: Duration, f: F) -> std::result::Result<T,E>
-    where
-        F: Fn()-> Fut,
-        Fut: std::future::Future<Output=std::result::Result<T,E>>
+async fn await_for<T, E, F, Fut>(attempts: u32, interval: Duration, f: F) -> std::result::Result<T, E>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = std::result::Result<T, E>>,
 {
-    for _attempts in 1 .. attempts {
+    for _attempts in 1..attempts {
         let r = f().await;
         if r.is_ok() {
             return r;
@@ -126,7 +143,7 @@ async fn await_for<T,E,F,Fut>(attempts: u32, interval: Duration, f: F) -> std::r
 /// requires registrar and voter accounts that are not easy to create.
 /// That's why for the testing purposes we manually create these accounts,
 /// by pushing them directly to solana-test-validator.
-/// 
+///
 /// The code of accounts initialization is taken from bubblegum program tests.
 fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountInit) {
     let tree_creator = Keypair::from_bytes(TREE_CREATOR.as_ref()).unwrap();
@@ -135,8 +152,7 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
 
     let payer: Keypair = Keypair::from_bytes(TEST_PAYER).unwrap();
 
-    let governance_program_id =
-        Pubkey::from_str("CuyWCRdHT8pZLG793UR5R9z31AC49d47ZW9ggN6P7qZ4").unwrap();
+    let governance_program_id = Pubkey::from_str("CuyWCRdHT8pZLG793UR5R9z31AC49d47ZW9ggN6P7qZ4").unwrap();
     let realm_authority = Pubkey::from_str("Euec5oQGN3Y9kqVrz6PQRfTpYSn6jK3k1JonDiMTzAtA").unwrap();
     let voter_authority = payer.pubkey();
 
@@ -188,10 +204,7 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
         bump: 0,
     };
 
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
 
     let lockup = Lockup {
         start_ts: 0,
@@ -222,26 +235,15 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
         _reserved1: [0; 14],
     };
 
-    let registrar_acc_data = [
-        REGISTRAR_DISCRIMINATOR.as_ref(),
-        bytemuck::bytes_of(&registrar),
-    ]
-    .concat();
+    let registrar_acc_data = [REGISTRAR_DISCRIMINATOR.as_ref(), bytemuck::bytes_of(&registrar)].concat();
     let voter_acc_data = [VOTER_DISCRIMINATOR.as_ref(), bytemuck::bytes_of(&voter)].concat();
 
     // for next two accounts set arbitrary balance because it doesn't meter for test
-    let mut registrar_account = AccountSharedData::new(
-        10000000000000000,
-        registrar_acc_data.len(),
-        &mplx_staking_states::ID,
-    );
+    let mut registrar_account =
+        AccountSharedData::new(10000000000000000, registrar_acc_data.len(), &mplx_staking_states::ID);
     registrar_account.set_data_from_slice(registrar_acc_data.as_ref());
 
-    let mut voter_account = AccountSharedData::new(
-        10000000000000000,
-        voter_acc_data.len(),
-        &mplx_staking_states::ID,
-    );
+    let mut voter_account = AccountSharedData::new(10000000000000000, voter_acc_data.len(), &mplx_staking_states::ID);
     voter_account.set_data_from_slice(voter_acc_data.as_ref());
 
     (
