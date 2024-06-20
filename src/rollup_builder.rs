@@ -248,7 +248,7 @@ fn make_changelog_path(changelog: &dyn IChangeLog) -> Vec<spl_account_compressio
 mod test {
     use super::*;
     use crate::model::Rollup;
-    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
     use std::io::BufWriter;
 
     #[test]
@@ -277,7 +277,7 @@ mod test {
         let mut rollup_builder = RollupBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
 
         for i in 1u8..=32 {
-            let ma = test_metadata_args(i);
+            let ma = test_metadata_args(i, vec![]);
             rollup_builder.add_asset(&owner, &delegate, &ma, &None).unwrap();
         }
 
@@ -289,7 +289,7 @@ mod test {
             &rollup_builder.tree_account,
             &owner,
             &delegate,
-            &test_metadata_args(1u8),
+            &test_metadata_args(1u8, vec![]),
         )
         .hashed_leaf;
         let leaf_2_hash = hash_metadata_args(
@@ -297,7 +297,7 @@ mod test {
             &rollup_builder.tree_account,
             &owner,
             &delegate,
-            &test_metadata_args(2u8),
+            &test_metadata_args(2u8, vec![]),
         )
         .hashed_leaf;
         assert_eq!(canopy_4[0], keccak::hashv(&[&leaf_1_hash, &leaf_2_hash]).to_bytes());
@@ -307,7 +307,7 @@ mod test {
             &rollup_builder.tree_account,
             &owner,
             &delegate,
-            &test_metadata_args(31u8),
+            &test_metadata_args(31u8, vec![]),
         )
         .hashed_leaf;
         let leaf_32_hash = hash_metadata_args(
@@ -315,7 +315,7 @@ mod test {
             &rollup_builder.tree_account,
             &owner,
             &delegate,
-            &test_metadata_args(32u8),
+            &test_metadata_args(32u8, vec![]),
         )
         .hashed_leaf;
         assert_eq!(canopy_4[15], keccak::hashv(&[&leaf_31_hash, &leaf_32_hash]).to_bytes());
@@ -329,14 +329,208 @@ mod test {
         let mut rollup_builder = RollupBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
 
         for i in 1u8..=((1u8 << 5) / 2) {
-            let ma = test_metadata_args(i);
+            let ma = test_metadata_args(i, vec![]);
             rollup_builder.add_asset(&owner, &delegate, &ma, &None).unwrap();
         }
 
         assert_eq!(rollup_builder.canopy_leaves.len(), 8);
     }
 
-    fn test_metadata_args(i: u8) -> MetadataArgs {
+
+    #[test]
+    fn test_verify_one_creator() {
+        let tree_account = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let delegate = Pubkey::new_unique();
+
+        let creator_key = Keypair::new();
+
+        let asset_creators = vec![
+            Creator{
+                address: creator_key.pubkey(),
+                verified: true,
+                share: 100,
+            },
+        ];
+
+        let metadata_args = test_metadata_args(1u8, asset_creators.clone());
+
+        let leaf_1_hash = hash_metadata_args(
+            0,
+            &tree_account,
+            &owner,
+            &delegate,
+            &metadata_args,
+        )
+        .hashed_leaf;
+
+        let signature = creator_key.sign_message(leaf_1_hash.as_ref());
+
+        let mut creators_signatures = HashMap::new();
+        creators_signatures.insert(creator_key.pubkey(), signature);
+
+        let mut rollup_builder = RollupBuilder::new(tree_account, 5, 8, 4).unwrap();
+
+        rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures)).unwrap();
+
+        let metadata_args = test_metadata_args(2u8, asset_creators);
+
+        match rollup_builder.add_asset(&owner, &delegate, &metadata_args, &None) {
+            Ok(_) => panic!("Action should fail"),
+            Err(err) => {
+                match err {
+                    RollupError::MissingCreatorsSignature(key) => {
+                        assert_eq!(key, creator_key.pubkey().to_string());
+                    }
+                    _ => panic!("Method returned wrong error"),
+                }
+            }
+        }
+
+        let signature = creator_key.sign_message([1;32].as_ref());
+
+        let mut creators_signatures = HashMap::new();
+        creators_signatures.insert(creator_key.pubkey(), signature);
+
+        match rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures)) {
+            Ok(_) => panic!("Action should fail"),
+            Err(err) => {
+                match err {
+                    RollupError::InvalidCreatorsSignature(key) => {
+                        assert_eq!(key, creator_key.pubkey().to_string());
+                    }
+                    _ => panic!("Method returned wrong error"),
+                }
+            }
+        }
+
+        let asset_creators = vec![
+            Creator{
+                address: creator_key.pubkey(),
+                verified: false,
+                share: 100,
+            },
+        ];
+
+        let metadata_args = test_metadata_args(2u8, asset_creators);
+
+        let signature = creator_key.sign_message([1;32].as_ref());
+
+        let mut creators_signatures = HashMap::new();
+        creators_signatures.insert(creator_key.pubkey(), signature);
+
+        // it will work fine with any signature because creator passed as unverified
+        rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures)).unwrap();
+    }
+
+    #[test]
+    fn test_verify_few_creators() {
+        let tree_account = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let delegate = Pubkey::new_unique();
+
+        let creator_key_1 = Keypair::new();
+        let creator_key_2 = Keypair::new();
+
+        let asset_creators = vec![
+            Creator{
+                address: creator_key_1.pubkey(),
+                verified: true,
+                share: 50,
+            },
+            Creator{
+                address: creator_key_2.pubkey(),
+                verified: true,
+                share: 50,
+            },
+        ];
+
+        let metadata_args = test_metadata_args(1u8, asset_creators.clone());
+
+        let leaf_1_hash = hash_metadata_args(
+            0,
+            &tree_account,
+            &owner,
+            &delegate,
+            &metadata_args,
+        )
+        .hashed_leaf;
+
+        let mut creators_signatures = HashMap::new();
+
+        let signature = creator_key_1.sign_message(leaf_1_hash.as_ref());
+        creators_signatures.insert(creator_key_1.pubkey(), signature);
+
+        let signature = creator_key_2.sign_message(leaf_1_hash.as_ref());
+        creators_signatures.insert(creator_key_2.pubkey(), signature);
+
+        let mut rollup_builder = RollupBuilder::new(tree_account, 5, 8, 4).unwrap();
+
+        rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures)).unwrap();
+
+        let asset_creators = vec![
+            Creator{
+                address: creator_key_1.pubkey(),
+                verified: true,
+                share: 50,
+            },
+            Creator{
+                address: creator_key_2.pubkey(),
+                verified: true,
+                share: 50,
+            },
+        ];
+
+        let metadata_args = test_metadata_args(2u8, asset_creators.clone());
+
+        let leaf_1_hash = hash_metadata_args(
+            1,
+            &tree_account,
+            &owner,
+            &delegate,
+            &metadata_args,
+        )
+        .hashed_leaf;
+
+        let mut creators_signatures = HashMap::new();
+
+        let signature = creator_key_1.sign_message(leaf_1_hash.as_ref());
+        creators_signatures.insert(creator_key_1.pubkey(), signature);
+
+        match rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures.clone())) {
+            Ok(_) => panic!("Action should fail"),
+            Err(err) => {
+                match err {
+                    RollupError::MissingCreatorsSignature(key) => {
+                        assert_eq!(key, creator_key_2.pubkey().to_string());
+                    }
+                    _ => panic!("Method returned wrong error"),
+                }
+            }
+        }
+
+        let signature = creator_key_2.sign_message([1;32].as_ref());
+        creators_signatures.insert(creator_key_2.pubkey(), signature);
+
+        match rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures.clone())) {
+            Ok(_) => panic!("Action should fail"),
+            Err(err) => {
+                match err {
+                    RollupError::InvalidCreatorsSignature(key) => {
+                        assert_eq!(key, creator_key_2.pubkey().to_string());
+                    }
+                    _ => panic!("Method returned wrong error"),
+                }
+            }
+        }
+
+        let signature = creator_key_2.sign_message(leaf_1_hash.as_ref());
+        creators_signatures.insert(creator_key_2.pubkey(), signature);
+
+        rollup_builder.add_asset(&owner, &delegate, &metadata_args, &Some(creators_signatures)).unwrap();
+    }
+
+    fn test_metadata_args(i: u8, creators: Vec<Creator>) -> MetadataArgs {
         MetadataArgs {
             name: format!("{i}"),
             symbol: format!("symbol-{i}"),
@@ -349,7 +543,7 @@ mod test {
             collection: None,
             uses: None,
             token_program_version: mpl_bubblegum::types::TokenProgramVersion::Original,
-            creators: Vec::new(),
+            creators,
         }
     }
 }
