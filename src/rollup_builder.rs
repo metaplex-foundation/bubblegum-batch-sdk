@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use anchor_lang::prelude::*;
 
-use mpl_bubblegum::types::{LeafSchema, MetadataArgs};
+use mpl_bubblegum::types::{Creator, LeafSchema, MetadataArgs};
+use solana_sdk::signature::Signature;
 
 use crate::errors::RollupError;
 use crate::merkle_tree_wrapper::{make_concurrent_merkle_tree, IChangeLog, ITree};
@@ -67,7 +68,8 @@ impl RollupBuilder {
     /// - `owner` - asset owner
     /// - `delegate` - ???
     /// - `metadata_args` - asset details as [MetadataArgs]
-    pub fn add_asset(&mut self, owner: &Pubkey, delegate: &Pubkey, metadata_args: &MetadataArgs) {
+    /// - `creators_signatures` - HashMap with creators Pubkeys and signatures
+    pub fn add_asset(&mut self, owner: &Pubkey, delegate: &Pubkey, metadata_args: &MetadataArgs, creators_signatures: &Option<HashMap<Pubkey, Signature>>) -> std::result::Result<(), RollupError> {
         let metadata_args_hash = hash_metadata_args(
             self.mints.len() as u64,
             &self.tree_account,
@@ -82,6 +84,8 @@ impl RollupBuilder {
             creator_hash,
             hashed_leaf,
         } = metadata_args_hash;
+
+        verify_signatures(&metadata_args.creators, hashed_leaf.as_ref(), creators_signatures.clone())?;
 
         self.merkle.append(hashed_leaf).unwrap();
 
@@ -118,8 +122,11 @@ impl RollupBuilder {
             },
             mint_args: metadata_args.clone(),
             authority: owner.clone(),
+            creator_signature: creators_signatures.clone(),
         };
         self.mints.push(rolled_mint);
+
+        Ok(())
     }
 
     pub fn build_rollup(&self) -> Rollup {
@@ -133,6 +140,30 @@ impl RollupBuilder {
             max_buffer_size: self.max_buffer_size,
         }
     }
+}
+
+/// Validates signatures for asset creators who marked as verified
+/// 
+/// ## Arguments
+/// `asset_creators` - list of asset creators
+/// `msg` - leaf hash. Basically it's hash of such asset values as id, owner, delegate, nonce, data_hash, creator_hash
+/// `creators_signatures` - HashMap with asset creators pubkeys and signatures
+fn verify_signatures(asset_creators: &Vec<Creator>, msg: &[u8], creators_signatures: Option<HashMap<Pubkey, Signature>>) -> std::result::Result<(), RollupError> {
+    let signatures = creators_signatures.unwrap_or_default();
+
+    for creator in asset_creators {
+        if creator.verified {
+            if let Some(signature) = signatures.get(&creator.address) {
+                if !signature.verify(creator.address.to_bytes().as_ref(), msg) {
+                    return Err(RollupError::InvalidCreatorsSignature(creator.address.to_string()));
+                }
+            } else {
+                return Err(RollupError::MissingCreatorsSignature(creator.address.to_string()));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Return value for asset leaf hasher function (Helper type that helps to simplify code)
@@ -247,7 +278,7 @@ mod test {
 
         for i in 1u8..=32 {
             let ma = test_metadata_args(i);
-            rollup_builder.add_asset(&owner, &delegate, &ma);
+            rollup_builder.add_asset(&owner, &delegate, &ma, &None).unwrap();
         }
 
         let canopy_4 = &rollup_builder.canopy_leaves;
@@ -299,7 +330,7 @@ mod test {
 
         for i in 1u8..=((1u8 << 5) / 2) {
             let ma = test_metadata_args(i);
-            rollup_builder.add_asset(&owner, &delegate, &ma);
+            rollup_builder.add_asset(&owner, &delegate, &ma, &None).unwrap();
         }
 
         assert_eq!(rollup_builder.canopy_leaves.len(), 8);

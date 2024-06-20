@@ -21,5 +21,9 @@ pub enum RollupError {
     #[error("Generic error: {0}")]
     GenricErr(String),
     #[error("Nester error: {0}")]
-    NestedErr(Box<dyn std::error::Error>)
+    NestedErr(Box<dyn std::error::Error>),
+    #[error("Failed signature verification for creator: {0}")]
+    InvalidCreatorsSignature(String),
+    #[error("Missing signature for creator: {0}")]
+    MissingCreatorsSignature(String),
 }

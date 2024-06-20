@@ -143,6 +143,7 @@ impl RollupClient {
                 leaf_update,
                 mint_args,
                 authority: _,
+                creator_signature,
             } = rolled_mint;
             let LeafSchema::V1 {
                 id: _,
@@ -152,7 +153,7 @@ impl RollupClient {
                 data_hash: _,
                 creator_hash: _,
             } = leaf_update;
-            rollup_builder.add_asset(owner, delegate, mint_args);
+            rollup_builder.add_asset(owner, delegate, mint_args, creator_signature)?;
         }
 
         Ok(rollup_builder)
