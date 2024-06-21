@@ -148,7 +148,7 @@ impl RollupBuilder {
 /// `asset_creators` - list of asset creators
 /// `msg` - leaf hash. Basically it's hash of such asset values as id, owner, delegate, nonce, data_hash, creator_hash
 /// `creators_signatures` - HashMap with asset creators pubkeys and signatures
-fn verify_signatures(asset_creators: &Vec<Creator>, msg: &[u8], creators_signatures: Option<HashMap<Pubkey, Signature>>) -> std::result::Result<(), RollupError> {
+pub fn verify_signatures(asset_creators: &Vec<Creator>, msg: &[u8], creators_signatures: Option<HashMap<Pubkey, Signature>>) -> std::result::Result<(), RollupError> {
     let signatures = creators_signatures.unwrap_or_default();
 
     for creator in asset_creators {
