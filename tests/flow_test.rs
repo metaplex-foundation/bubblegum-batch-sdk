@@ -9,6 +9,7 @@ use mplx_staking_states::state::{
 use rollup_sdk::rollup_client::RollupClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{account::AccountSharedData, pubkey::Pubkey, signature::Keypair, signer::Signer};
+use spl_account_compression::ConcurrentMerkleTree;
 use std::{
     str::FromStr,
     sync::Arc,
@@ -119,6 +120,26 @@ async fn test_complete_rollup_flow() {
         .await
         .unwrap();
     println!("Finalize tree signature: {sig_2:?}");
+
+    // verification
+    let account_raw_bytes = solana_client
+        .get_account_data(&tree_data_account.pubkey())
+        .await
+        .unwrap();
+
+    let header_size = spl_account_compression::state::CONCURRENT_MERKLE_TREE_HEADER_SIZE_V1;
+
+    unsafe {
+        let (orig_tree_ptr, _vtable_ptr): (*const u8, *const u8) =
+            std::mem::transmute(Box::into_raw(rollup_builder.merkle));
+        let original: *const ConcurrentMerkleTree<10, 32> = std::mem::transmute(orig_tree_ptr);
+
+        let acc_tree_ptr = account_raw_bytes.as_ptr().add(header_size);
+        let created: *const ConcurrentMerkleTree<10, 32> = std::mem::transmute(acc_tree_ptr);
+
+        assert_eq!((*original).sequence_number, (*created).sequence_number);
+        assert_eq!((*original).rightmost_proof, (*created).rightmost_proof);
+    }
 
     tvp_process.kill().unwrap();
 }
