@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use mpl_bubblegum::accounts::MerkleTree;
@@ -153,7 +154,20 @@ impl RollupClient {
                 data_hash: _,
                 creator_hash: _,
             } = leaf_update;
-            rollup_builder.add_asset(owner, delegate, mint_args, creator_signature)?;
+
+            // creator verification should be reset to false when we add asset to the builder
+            // if there are signatures from creators `verified` value will be set to true
+            // during `add_verified_creators_for_asset()` method call
+            let mut mint_args = mint_args.clone();
+            mint_args.creators.iter_mut().for_each(|c| c.verified = false);
+            let metadata_arg_hash = rollup_builder.add_asset(owner, delegate, &mint_args)?;
+
+            if let Some(creator_signature) = creator_signature {
+                let mut message_and_signature = HashMap::new();
+                message_and_signature.insert(metadata_arg_hash.get_nonce(), creator_signature.clone());
+
+                rollup_builder.add_verified_creators_for_asset(message_and_signature)?;
+            }
         }
 
         Ok(rollup_builder)

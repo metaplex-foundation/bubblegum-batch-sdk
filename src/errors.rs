@@ -24,6 +24,10 @@ pub enum RollupError {
     NestedErr(Box<dyn std::error::Error>),
     #[error("Failed signature verification for creator: {0}")]
     InvalidCreatorsSignature(String),
-    #[error("Missing signature for creator: {0}")]
-    MissingCreatorsSignature(String),
+    #[error("Missing rolled mint with ID: {0}")]
+    MissingRolledMint(u64),
+    #[error("Attempt to add unverified creator {0}. Add verified creators with `add_verified_creators_for_asset()` method")]
+    UnverifiedCreator(String),
+    #[error("Extra creators were passed for verification")]
+    ExtraCreatorsReceived,
 }
