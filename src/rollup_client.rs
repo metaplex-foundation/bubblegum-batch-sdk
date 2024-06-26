@@ -174,12 +174,12 @@ impl RollupClient {
     }
 
     /// Writes given rollup to the solana tree account.
-    /// 
+    ///
     /// ## Arguments
     /// * `payer` - account that pays for the operation
     /// * `metadata_url` - URL of the rollup JSON representation stored in an immutable storage
-    /// * `metadata_hash` - 
-    /// * `rollup_builder` - 
+    /// * `metadata_hash` - hash of metadata uploaded to an immutable storage
+    /// * `rollup_builder` - rollup builder object created after prepare_tree
     /// * `tree_creator` - same tree creator that was used to prepare_tree
     /// * `staker` - can be same as payer
     pub async fn finalize_tree(
@@ -191,7 +191,6 @@ impl RollupClient {
         tree_creator: &Keypair, // TODO: think how to derive this argument from the RollupBuilder
         staker: &Keypair,
     ) -> Result<Signature, RollupError> {
-
         let tree_config_account = pubkey_util::derive_tree_config_account(&rollup_builder.tree_account);
 
         let canopy_depth = parse_tree_size(&self.client.get_account(&rollup_builder.tree_account).await?)?.2;
@@ -224,7 +223,10 @@ impl RollupClient {
 
         let rollup = rollup_builder.build_rollup();
         // We're just using emaining_accounts to send proofs because they are of the same type
-        let remaining_accounts = rollup_builder.merkle.get_rightmost_proof().iter()
+        let remaining_accounts = rollup_builder
+            .merkle
+            .get_rightmost_proof()
+            .iter()
             .map(|proof| AccountMeta {
                 pubkey: Pubkey::new_from_array(proof.clone()),
                 is_signer: false,
@@ -239,7 +241,10 @@ impl RollupClient {
             .fee_receiver(bubblegum::state::FEE_RECEIVER)
             .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
             .registrar(pubkey_util::get_registrar_key())
-            .voter(pubkey_util::get_voter_key(&pubkey_util::get_registrar_key(), &payer.pubkey()))
+            .voter(pubkey_util::get_voter_key(
+                &pubkey_util::get_registrar_key(),
+                &payer.pubkey(),
+            ))
             .rightmost_root(rollup.merkle_root)
             .rightmost_leaf(rollup.last_leaf_hash)
             .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
@@ -290,4 +295,3 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
     let canopy_size = restore_canopy_depth_from_buffer(canopy_buf_size as u32);
     Ok((max_depth, max_buffer_size, canopy_size))
 }
-

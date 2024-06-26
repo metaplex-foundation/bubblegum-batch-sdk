@@ -1,9 +1,5 @@
 # Rollup SDK
 
-See [Integration tests](it.md)
-
----
-
 This library allows to easily create a rollup (a compressed NFT tree that is initialized off-chain).
 
 The [merkle tree](https://developers.metaplex.com/bubblegum/concurrent-merkle-trees)
@@ -102,3 +98,8 @@ and become ready to validate changes to the tree.
 Compressed NFTs (merkle trees) that are created using the rollup flow,
 are fully compatible with all [Metaplex Bubblegum](https://developers.metaplex.com/bubblegum)
 instructions.
+
+
+## Running tests
+
+See [Integration tests](it.md)
