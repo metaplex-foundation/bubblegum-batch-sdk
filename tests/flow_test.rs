@@ -92,7 +92,7 @@ async fn test_complete_rollup_flow() {
     let rollup_client = RollupClient::new(solana_client.clone());
 
     let sig_1 = rollup_client
-        .prepare_tree(&payer, &tree_creator, &tree_data_account, 10, 32, 0)
+        .prepare_tree(&payer, &tree_creator, &tree_data_account, 10, 32, 3)
         .await
         .unwrap();
     println!("Prepare tree signature: {sig_1:?}");
