@@ -8,7 +8,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use solana_sdk::pubkey::Pubkey;
 
-/// Represents an off-chain compressed NFT merkle tree.
+/// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
+/// an immutable storage, an picked up by DAS validatiors, that verify the correctness
+/// of a rollup.
+/// This type is used only for providing the rollup data to DAS validators,
+/// all the off-cahin rollup changes should be done via RollupBuilder.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rollup {
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
@@ -39,7 +43,6 @@ impl PartialEq for Rollup {
     fn eq(&self, other: &Self) -> bool {
         self.tree_id == other.tree_id
             && self.rolled_mints == other.rolled_mints
-            //&& self.raw_metadata_map == other.raw_metadata_map
             && self.max_depth == other.max_depth
             && self.max_buffer_size == other.max_buffer_size
             && self.merkle_root == other.merkle_root

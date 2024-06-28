@@ -15,8 +15,10 @@ use solana_sdk::pubkey::Pubkey;
 /// Builder that allows to easily build an offline compressed NFT,
 /// that can be efficiently (cheap) saved onchain afterward.
 ///
-/// It helps to add assets to the wrapped merkle tree,
-/// generate a rollup that can be uploaded to an immutable storage,
+/// It allows to:
+/// * add assets to the wrapped merkle tree
+/// * generate a rollup that can be uploaded to an immutable storage
+/// * push all the preparations made off-chain to the Solana as a bubblegum tree
 ///
 /// TODO: Add link to the rollup documentation.
 pub struct RollupBuilder {
@@ -35,7 +37,7 @@ pub struct RollupBuilder {
     /// See [Rollup::last_leaf_hash]
     pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
-    pub(crate) canopy_leaves: Vec<[u8; 32]>,
+    pub canopy_leaves: Vec<[u8; 32]>,
 }
 
 impl RollupBuilder {
@@ -148,6 +150,10 @@ struct MetadataArgsHash {
 ///
 /// ## Arguments
 /// `nonce` - should be `rollup_builder.mints.len() as u64`
+/// `tree_account` - pubkey of the account the resides in
+/// `owner` - the asset owner
+/// `delegate` - ?
+/// `metadata_args` - asset metadata information
 fn hash_metadata_args(
     nonce: u64,
     tree_account: &Pubkey,

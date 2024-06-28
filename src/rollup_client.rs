@@ -27,6 +27,12 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 const CANOPY_NODES_PER_TX: usize = 24;
 
 /// The main controll point for rollup creation flows.
+/// It allows to:
+/// 1) Create a merkle tree account for a rollup
+/// 2) Add assets (NFT) to the rollup off-chain
+/// 3) Push the rollup to a SOlana account in a form of bubblegum tree
+/// 
+/// TODO: add link to rollup documentation page.
 pub struct RollupClient {
     client: Arc<RpcClient>,
 }
@@ -241,8 +247,10 @@ impl RollupClient {
             .system_program(system_program::id())
             .instruction();
 
+        let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
+
         let tx = Transaction::new_signed_with_payer(
-            &[finalize_instruction],
+            &[compute_budget, finalize_instruction],
             Some(&tree_creator.pubkey()),
             &[payer, tree_creator, staker],
             self.client.get_latest_blockhash().await?,

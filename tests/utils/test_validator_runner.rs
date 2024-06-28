@@ -1,8 +1,5 @@
 use std::{
-    fs::File,
-    io::Write,
-    path::Path,
-    process::{Child, Command},
+    fs::File, io::Write, ops::Deref, path::Path, process::{Child, Command}
 };
 
 use base64::Engine;
@@ -18,14 +15,21 @@ const ENV_SOLANA_HOME: &'static str = "SOLANA_HOME";
 /// This wrapper allow to launch `solana-test-validator` as separate process,
 /// plus specify list of contracts and account to deploy on startup.
 pub struct TestValidatorRunner {
+    port: u32,
     contracts: Vec<ContractToDeploy>,
     accounts: Vec<AccountInit>,
     search_paths: Vec<String>,
 }
 
 impl TestValidatorRunner {
-    pub fn new() -> TestValidatorRunner {
+    // The thing is that after the server shuts down and releases the port,
+    // this port doesn't become available immediately.
+    // That's why for each test we need to either specify different port
+    // for solana-test-validator, or wait fo the port to become available.
+    // Here, we went with the first option.
+    pub fn new(port: u32) -> TestValidatorRunner {
         TestValidatorRunner {
+            port: port,
             contracts: Vec::new(),
             accounts: Vec::new(),
             search_paths: Vec::new(),
@@ -54,6 +58,10 @@ impl TestValidatorRunner {
         let mut cmd = Command::new(cmd_name);
         cmd.arg("--reset");
 
+        let port_string = self.port.to_string();
+        cmd.arg("--rpc-port").arg(&port_string);
+        cmd.arg("--faucet-port").arg((&self.port+1).to_string());
+
         for contract in &self.contracts {
             let path_to_so = self
                 .find_in_paths(&contract.path)
@@ -62,7 +70,7 @@ impl TestValidatorRunner {
         }
 
         for account in &self.accounts {
-            let file_path = write_to_temp_file(&account.name, account.to_json().as_bytes());
+            let file_path = write_to_temp_file(&port_string, &account.name, account.to_json().as_bytes());
             cmd.args(["--account", &account.pubkey.to_string(), &file_path]);
         }
 
@@ -129,16 +137,36 @@ impl AccountInit {
     }
 }
 
-fn write_to_temp_file(name: &str, payload: &[u8]) -> String {
+fn write_to_temp_file(temp_prefix: &str, name: &str, payload: &[u8]) -> String {
     let dir = std::env::temp_dir();
     let accounts_temp_dir = dir.join("test_sol_programs");
     if !accounts_temp_dir.exists() {
         std::fs::create_dir(&accounts_temp_dir).unwrap();
     }
-    let file_path = accounts_temp_dir.join(name);
+    let the_test_accounts_dir = accounts_temp_dir.join(temp_prefix);
+    if !the_test_accounts_dir.exists() {
+        std::fs::create_dir(&the_test_accounts_dir).unwrap();
+    }
+    let file_path = the_test_accounts_dir.join(name);
     let mut file = File::create(&file_path).unwrap();
     file.write_all(payload).unwrap();
     file_path.to_str().unwrap().to_string()
+}
+
+pub struct ChildProcess(pub Child);
+
+impl Drop for ChildProcess {
+    fn drop(&mut self) {
+        self.0.kill().unwrap();
+    }
+}
+
+impl Deref for ChildProcess {
+    type Target = Child;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use spl_concurrent_merkle_tree::changelog::ChangeLog;
 
 use crate::errors::RollupError;
 
-/// Interface that abstract [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
+/// Interface that abstracts over [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
 /// regardless const generic parameters.
 pub trait ITree {
     fn initialize(&mut self) -> Result<Node, ConcurrentMerkleTreeError>;
@@ -18,6 +18,7 @@ pub trait ITree {
     fn get_rightmost_proof(&self) -> &[[u8; 32]];
 }
 
+/// Generates ITree impl for a [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
 #[macro_export]
 macro_rules! make_tree_impls {
   ( $( ($x:literal, $y:literal) ),* ) => {
@@ -279,7 +280,8 @@ pub fn calc_merkle_tree_size(max_depth: u32, max_buffer_size: u32, canopy_depth:
     tree_size.map(|s| s + calc_canopy_size(canopy_depth))
 }
 
-fn calc_canopy_size(canopy_depth: u32) -> usize {
+/// Calculates the amount of bytes required to store acanopy of given size.
+pub fn calc_canopy_size(canopy_depth: u32) -> usize {
     if canopy_depth == 0 {
         0
     } else {
@@ -287,11 +289,27 @@ fn calc_canopy_size(canopy_depth: u32) -> usize {
     }
 }
 
+/// Calculates the size (amount of bytes) that a solana account should have
+/// to be able to store:
+/// 1) The header of tree data account
+/// 2) Body of [ConcurrentMerkleTree] of the given size
+/// 3) Buffer for canopy leaf nodes, if the canopy usage is switched on
+/// 
+/// Reminder: canopy - is the upper part of the merkle tree not including the root.
+/// (how much of tree layers it includes is defined by the canopy depth argument).
+/// It is used to be able to transfer all required proofs for trees with depth greater than 17.
+/// 
+/// Args:
+/// * `max_depth` - merkle tree depth
+/// * `max_buffer_size` - size of the buffer for concurrent changes
+/// * `canopy_depth` - depth of the cannopy upper subtree
 pub fn calc_tree_data_account_size(max_depth: u32, max_buffer_size: u32, canopy_depth: u32) -> Option<usize> {
     calc_merkle_tree_size(max_depth, max_buffer_size, canopy_depth)
         .map(|s| spl_account_compression::state::CONCURRENT_MERKLE_TREE_HEADER_SIZE_V1 + s)
 }
 
+/// Takes the size of a buffer in bytes, and calculates the depth of a canopy that
+/// fits in this buffer.
 pub fn restore_canopy_depth_from_buffer(canopy_buffer_size: u32) -> u32 {
     if canopy_buffer_size < 64 {
         0
