@@ -5,15 +5,43 @@ This library allows to easily create a rollup (a compressed NFT tree that is ini
 The [merkle tree](https://developers.metaplex.com/bubblegum/concurrent-merkle-trees)
 is fully compatible with [Metaplex Bubblegum](https://developers.metaplex.com/bubblegum/mint-cnfts).
 
+## Motivation
+
+In case if you are minting a lot of NFTs,
+[Metaplex Bubblegum](https://developers.metaplex.com/bubblegum) allows to significantly reduce
+the cost on storage.
+Yet you still have to make a separate transaction for each minted NFT,
+that's why the initial creation of a big package of NFTs (e.g. for a game you are launching)
+can be not cheap.
+
+The Rollup solves this problem by moving the creation of the whole initial set of NFTs to off-chain.
+
+1) you create the whole rollup, which is an off-chain representation of
+the [merkle tree](https://developers.metaplex.com/bubblegum/concurrent-merkle-trees)
+populate it with all the assets you want to be included in your initial set
+2) you persist the rollup into an immutable storage, to make it available for validators
+3) you push the whole tree of NFTs to Solana in a single operation (can consist of a couple of transactions)
+
+And as the result you have a whole tree of NFTs, with expense of one account and a couple of solana transaction.
+
 ## Usage
 
-Example of complete rollup creation flow:
+This section demonstrates the complete flow of rollup creation.
+
+⚠️ To be able to create a rollup, you need to have a stake in MPLX tokens.
+TODO: add link to staking page.
 
 ```rust
+use rollup_sdk::rollup_client::RollupClient;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::signer::keypair::Keypair;
+use mpl_bubblegum::types::MetadataArgs;
+use std::sync::Arc;
+
 let payer: Keypair = todo!("the one who pays for the rollup");
 let staker: Keypair = todo!("can be same as payer");
 
-let url = "http://127.0.0.1::8899".to_string(); // Solana RPC node address
+let url = "https://api.devnet.solana.com".to_string(); // Solana RPC node address
 let timeout = Duration::from_secs(1);
 let solana_client = Arc::new(RpcClient::new_with_timeout(url, timeout));
 
@@ -26,7 +54,7 @@ let tree_data_account = Keypair::new();
 // Will prepare merkle tree with depth 10 (not counting root),
 // 32 cells changelog buffer (max 32 concurrent changes),
 // and canopy tree with depth 4 (not counting root).
-rollup_client.prepare_tree(
+let sign = rollup_client.prepare_tree(
     &payer,
     &tree_creator,
     &tree_data_account.pubkey(),
@@ -57,7 +85,7 @@ let metadata_hash: String = todo("hash of persisted rollup");
 
 // Finalize rollup in solana:
 // "move" offchain merkle tree along with the canopy tree to the account.
-rollup_client.finalize_tree(
+let sign = rollup_client.finalize_tree(
     &payer,
     &metadata_url,
     &metadata_hash,
@@ -98,6 +126,47 @@ and become ready to validate changes to the tree.
 Compressed NFTs (merkle trees) that are created using the rollup flow,
 are fully compatible with all [Metaplex Bubblegum](https://developers.metaplex.com/bubblegum)
 instructions.
+
+## Splitting the rollup creation in time
+
+You may want to not fill all the assets and create the merkle tree at once,
+but prepare a part of rollup, and then later (after hours, days, etc.)
+fill the rest of asserts, and push the tree to Solana.
+
+For that you need to create a `RollupBuilder`, populate it with a portion on assets,
+generate generate the `Rollup` object and save it as JSON somewhere
+(immutable storage, object store, local file, etc.)
+
+```rust
+let tree_data_account = Keypair::new();
+let rollup_client: RollupClient = ...;
+
+rollup_client.prepare_tree(&payer, &tree_creator, &tree_data_account.pubkey(), 10, 32, 4)
+    .awailt()?;
+
+let rollup_builder = rollup_client.create_rollup_builder(&tree_data_account.pubkey())
+    .await()?;
+
+let assets_to_add: &[(MetadataArgs, Pubkey, Pubkey)] = ...;
+for (asset, asset_owner, asset_delegate) in assets_to_add {
+    rollup_builder.add_asset(&asset_owner, &asset_delegate, &asset);
+}
+
+{
+    let rollup = rollup_builder.build_rollup();
+    let mut file = std::fs::File::create("rollup.json")?;
+    rollup.write_as_json(&mut file)?;
+}
+```
+
+Later you can recover the `RollupBuilder` from this persisted `Rollup` JSON representation
+and continue the flow.
+
+```rust
+let mut file = std::fs::File::create("rollup.json")?;
+let rollup = Rollup::read_as_json(&file).unwrap();
+let rollup_builder = rollup_client.restore_rollup_builder(&rollup).await?;
+```
 
 
 ## Running tests
