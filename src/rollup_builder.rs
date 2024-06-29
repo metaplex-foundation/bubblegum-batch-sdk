@@ -246,6 +246,11 @@ impl MetadataArgsHash {
     pub fn get_nonce(&self) -> u64 {
         self.nonce
     }
+
+    /// Returns asset id
+    pub fn get_asset_id(&self) -> Pubkey {
+        self.id
+    }
 }
 
 /// Hashes given merkle tree leaf asset.
