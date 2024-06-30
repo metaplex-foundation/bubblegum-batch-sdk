@@ -155,18 +155,13 @@ impl RollupClient {
                 creator_hash: _,
             } = leaf_update;
 
-            // creator verification should be reset to false when we add asset to the builder
-            // if there are signatures from creators `verified` value will be set to true
-            // during `add_verified_creators_for_asset()` method call
-            let mut mint_args = mint_args.clone();
-            mint_args.creators.iter_mut().for_each(|c| c.verified = false);
             let metadata_arg_hash = rollup_builder.add_asset(owner, delegate, &mint_args)?;
 
             if let Some(creator_signature) = creator_signature {
                 let mut message_and_signature = HashMap::new();
                 message_and_signature.insert(metadata_arg_hash.get_nonce(), creator_signature.clone());
 
-                rollup_builder.add_verified_creators_for_asset(message_and_signature)?;
+                rollup_builder.add_signatures_for_verified_creators(message_and_signature)?;
             }
         }
 
@@ -221,7 +216,7 @@ impl RollupClient {
             }
         }
 
-        let rollup = rollup_builder.build_rollup();
+        let rollup = rollup_builder.build_rollup()?;
         // We're just using emaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle

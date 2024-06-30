@@ -26,8 +26,12 @@ pub enum RollupError {
     InvalidCreatorsSignature(String),
     #[error("Missing rolled mint with ID: {0}")]
     MissingRolledMint(u64),
-    #[error("Attempt to add unverified creator {0}. Add verified creators with `add_verified_creators_for_asset()` method")]
-    UnverifiedCreator(String),
     #[error("Extra creators were passed for verification")]
     ExtraCreatorsReceived,
+    #[error("Missed signatures for asset: {0}")]
+    MissedSignaturesForAsset(String),
+    #[error("Missed signature from creator: {0}")]
+    MissedSignatureFromCreator(String),
+    #[error("Cannot add signature for unverified creator: {0}")]
+    CannotAddSignatureForUnverifiedCreator(String),
 }
