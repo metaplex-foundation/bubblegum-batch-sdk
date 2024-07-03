@@ -57,9 +57,9 @@ let tree_data_account = Keypair::new();
 let sign = rollup_client.prepare_tree(
     &payer,
     &tree_creator,
-    &tree_data_account.pubkey(),
-    10, // tree depth
-    32, // maximum concurrent changes
+    &tree_data_account,
+    20, // tree depth
+    256,// maximum concurrent changes
     4   // canopy tree depth
 ).awailt()?;
 
@@ -77,9 +77,8 @@ let rollup = rollup_builder.build_rollup();
 
 // Persisting rollup to Arweave, where it will
 // be picked up from by a DAS operator node.
-let mut buffer = BufWriter::new(Vec::new());
-rollup.write_as_json(&mut buffer)?;
-let rollup_json_bytes = buffer.buffer();
+let mut rollup_json_bytes = Vec::<u8>::new();
+rollup.write_as_json(&mut rollup_json_bytes)?;
 let metadata_url: String = todo("save rollup to arweave");
 let metadata_hash: String = todo("hash of persisted rollup");
 
@@ -153,8 +152,8 @@ for (asset, asset_owner, asset_delegate) in assets_to_add {
 }
 
 {
-    let rollup = rollup_builder.build_rollup();
     let mut file = std::fs::File::create("rollup.json")?;
+    let rollup = rollup_builder.build_rollup();
     rollup.write_as_json(&mut file)?;
 }
 ```
