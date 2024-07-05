@@ -34,4 +34,8 @@ pub enum RollupError {
     MissedSignatureFromCreator(String),
     #[error("Cannot add signature for unverified creator: {0}")]
     CannotAddSignatureForUnverifiedCreator(String),
+    #[error("Cannot parse canopy leaf nodes from tree data account")]
+    CanopyCoercionErr,
+    #[error("Canopy leaf number {0} mistmatch: on-chain {1:?}, off-chain {2:?}")]
+    CanopyLeafMistmatch(usize, [u8; 32], [u8; 32]),
 }
