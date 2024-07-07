@@ -135,6 +135,11 @@ impl RollupBuilder {
     /// asset nonce is using. Nested hashMap contains pairs of creator Pubkey and signature.
     pub fn add_signatures_for_verified_creators(&mut self, nonce_and_creator_signatures: HashMap<u64, HashMap<Pubkey, Signature>>) -> std::result::Result<(), RollupError> {
         for (asset_nonce, creator_signature) in nonce_and_creator_signatures {
+            if creator_signature.is_empty() {
+                // not to set Some() to creator_signature if HashMap is empty
+                continue;
+            }
+
             if let Some(rolled_mint) = self.mints.get_mut(&asset_nonce) {
                 Self::check_extra_creators(&rolled_mint.mint_args.creators, &creator_signature)?;
 
@@ -226,7 +231,7 @@ pub struct MetadataArgsHash {
 }
 
 impl MetadataArgsHash {
-    /// Creates new MetadataArgsHahs object
+    /// Creates new MetadataArgsHash object
     pub fn new(leaf_schema: &LeafSchema, tree: &Pubkey, metadata_args: &MetadataArgs) -> Self {
         match leaf_schema {
             LeafSchema::V1 { id: _, owner, delegate, nonce, data_hash: _, creator_hash: _ } => {
