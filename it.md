@@ -17,7 +17,7 @@ export SOLANA_HOME=/home/stas/dev/sdk/solana-1.18.15/bin
 Note: At the moment, while it is still a development phase, we use fork of bubblegum + account compression from a private repository.
 
 ```shell
-git clone git@github.com:n00m4d/mpl-bubblegum.git
+git clone git@github.com:adm-metaex/mpl-bubblegum.git
 cd mpl-bubblegum
 git switch -c feature/cleanup origin/feature/cleanup
 git submodule update --init --recursive

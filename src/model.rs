@@ -10,10 +10,10 @@ use serde_json::value::RawValue;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
-/// an immutable storage, an picked up by DAS validatiors, that verify the correctness
+/// an immutable storage, and picked up by DAS validatiors, that verify the correctness
 /// of a rollup.
 /// This type is used only for providing the rollup data to DAS validators,
-/// all the off-cahin rollup changes should be done via RollupBuilder.
+/// all the off-chain rollup changes should be done via RollupBuilder.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Rollup {
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
