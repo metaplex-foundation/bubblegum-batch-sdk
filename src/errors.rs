@@ -6,8 +6,6 @@ use thiserror::Error;
 pub enum RollupError {
     #[error("Solana client error: {0}")]
     SolanaClientErr(#[from] solana_rpc_client_api::client_error::Error),
-    // #[error("Solana RPC client error: {0}")]
-    // SolanaRpcCleintErr(#[from] solana_client::client_error::ClientError),
     #[error("Merkle tree bytes parsing error: {0}")]
     UnableToParseTreeErr(#[from] std::io::Error),
     #[error("Unexpected tree depth={0} and max size={1}")]

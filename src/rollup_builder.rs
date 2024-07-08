@@ -59,7 +59,6 @@ impl RollupBuilder {
             merkle: merkle,
             mints: Vec::new(),
             last_leaf_hash: [0; 32],
-            //tree_buf: TreeBuf::<[u8; 32]>::new_with_default(max_depth + 1),
             canopy_leaves: Vec::new(),
         })
     }
@@ -67,7 +66,7 @@ impl RollupBuilder {
     /// Add an asset to the merkle tree
     /// ## Arguments:
     /// - `owner` - asset owner
-    /// - `delegate` - ???
+    /// - `delegate` - [delegate authority](https://developers.metaplex.com/bubblegum/delegate-cnfts) of the asset allowed to perform actions on behalf of the owner - transferring or burning
     /// - `metadata_args` - asset details as [MetadataArgs]
     pub fn add_asset(&mut self, owner: &Pubkey, delegate: &Pubkey, metadata_args: &MetadataArgs) {
         let metadata_args_hash = hash_metadata_args(
@@ -127,7 +126,7 @@ impl RollupBuilder {
     pub fn build_rollup(&self) -> Rollup {
         Rollup {
             tree_id: self.tree_account,
-            raw_metadata_map: HashMap::new(), // TODO: fill?
+            raw_metadata_map: HashMap::new(), // TODO: fill? this may be provided by the client for every asset, maybe in add_asset as an optional parameter
             max_depth: self.max_depth,
             rolled_mints: self.mints.clone(),
             merkle_root: self.merkle.get_root(),
@@ -152,7 +151,7 @@ struct MetadataArgsHash {
 /// `nonce` - should be `rollup_builder.mints.len() as u64`
 /// `tree_account` - pubkey of the account the resides in
 /// `owner` - the asset owner
-/// `delegate` - ?
+/// `delegate` - [delegate authority](https://developers.metaplex.com/bubblegum/delegate-cnfts) of the asset allowed to perform actions on behalf of the owner - transferring or burning
 /// `metadata_args` - asset metadata information
 fn hash_metadata_args(
     nonce: u64,
