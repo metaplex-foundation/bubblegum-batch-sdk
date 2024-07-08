@@ -7,6 +7,7 @@ use mpl_bubblegum::types::{LeafSchema, MetadataArgs};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Keypair;
 
 /// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
 /// an immutable storage, an picked up by DAS validatiors, that verify the correctness
@@ -97,4 +98,12 @@ impl From<spl_account_compression::state::PathNode> for PathNode {
             index: value.index,
         }
     }
+}
+
+pub struct CollectionConfig {
+    pub collection_authority: Keypair,
+    pub collection_authority_record_pda: Option<Pubkey>,
+    pub collection_mint: Pubkey,
+    pub collection_metadata: Pubkey,
+    pub edition_account: Pubkey,
 }

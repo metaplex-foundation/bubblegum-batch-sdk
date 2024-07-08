@@ -43,13 +43,7 @@ const TEST_PAYER: &[u8] = &[
 #[serial_test::serial]
 async fn test_complete_rollup_flow() {
     // Prepare env
-    let (
-        _validator,
-        solana_client,
-        payer,
-        tree_creator,
-        tree_data_account
-    ) = prepare_bubblegum_test_env(8899).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8899).await;
 
     // Starting testing
     let rollup_client = RollupClient::new(solana_client.clone());
@@ -135,13 +129,7 @@ async fn test_complete_rollup_flow() {
 #[serial_test::serial]
 async fn test_half_filled_assets() {
     // Prepare env
-    let (
-        _validator,
-        solana_client,
-        payer,
-        tree_creator,
-        tree_data_account
-    ) = prepare_bubblegum_test_env(8909).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8909).await;
 
     // Starting testing
     let rollup_client = RollupClient::new(solana_client.clone());
@@ -167,7 +155,7 @@ async fn test_half_filled_assets() {
         .await
         .unwrap();
 
-    for i in 1u8 .. (((1<<DEPTH) / 2) + 2) {
+    for i in 1u8..(((1 << DEPTH) / 2) + 2) {
         rollup_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
     }
 
@@ -232,55 +220,61 @@ where
     f().await
 }
 
-async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair,) {
-        // Preparing account for test
-        let (payer, tree_creator, tree_data_account, registrar, voter) = prepare_test_accounts();
+async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair) {
+    // Preparing account for test
+    let (payer, tree_creator, tree_data_account, registrar, voter) = prepare_test_accounts();
 
-        // Launching solana-test-validator with registrar and voter test accounts
-        let mut tvr = TestValidatorRunner::new(port);
-        tvr.add_account(&registrar);
-        tvr.add_account(&voter);
-        tvr.add_program(&ContractToDeploy {
-            addr: bubblegum::ID,
-            path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
-        });
-        tvr.add_program(&ContractToDeploy {
-            addr: spl_account_compression::ID,
-            path: "../mpl-bubblegum/programs/.bin/spl_account_compression.so".to_string(),
-        });
-        tvr.add_program(&ContractToDeploy {
-            addr: spl_noop::ID,
-            path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
-        });
-    
-        let mut tvp_process = tvr.run().unwrap();
-    
-        let url = format!("http://127.0.0.1:{port}"); // Solana RPC node address
-        let solana_client = Arc::new(RpcClient::new_with_timeout(url, Duration::from_secs(1)));
-    
-        // Waiting for server to start
-        await_for(10, Duration::from_secs(1), || solana_client.get_health())
+    // Launching solana-test-validator with registrar and voter test accounts
+    let mut tvr = TestValidatorRunner::new(port);
+    tvr.add_account(&registrar);
+    tvr.add_account(&voter);
+    tvr.add_program(&ContractToDeploy {
+        addr: bubblegum::ID,
+        path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
+    });
+    tvr.add_program(&ContractToDeploy {
+        addr: spl_account_compression::ID,
+        path: "../mpl-bubblegum/programs/.bin/spl_account_compression.so".to_string(),
+    });
+    tvr.add_program(&ContractToDeploy {
+        addr: spl_noop::ID,
+        path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
+    });
+
+    let mut tvp_process = tvr.run().unwrap();
+
+    let url = format!("http://127.0.0.1:{port}"); // Solana RPC node address
+    let solana_client = Arc::new(RpcClient::new_with_timeout(url, Duration::from_secs(1)));
+
+    // Waiting for server to start
+    await_for(10, Duration::from_secs(1), || solana_client.get_health())
+        .await
+        .unwrap();
+
+    {
+        // Fund test accounts and wait for transaction to be commited.
+        let airdrop_sig_1 = solana_client
+            .request_airdrop(&payer.pubkey(), 20000000 * 10000)
             .await
             .unwrap();
-    
+        let airdrop_sig_2 = solana_client
+            .request_airdrop(&tree_creator.pubkey(), 20000000 * 10000)
+            .await
+            .unwrap();
+        while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap()
+            && solana_client.confirm_transaction(&airdrop_sig_2).await.unwrap())
         {
-            // Fund test accounts and wait for transaction to be commited.
-            let airdrop_sig_1 = solana_client
-                .request_airdrop(&payer.pubkey(), 20000000 * 10000)
-                .await
-                .unwrap();
-            let airdrop_sig_2 = solana_client
-                .request_airdrop(&tree_creator.pubkey(), 20000000 * 10000)
-                .await
-                .unwrap();
-            while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap()
-                && solana_client.confirm_transaction(&airdrop_sig_2).await.unwrap())
-            {
-                sleep(Duration::from_secs(1)).await;
-            }
+            sleep(Duration::from_secs(1)).await;
         }
+    }
 
-        (ChildProcess(tvp_process), solana_client, payer, tree_creator, tree_data_account)
+    (
+        ChildProcess(tvp_process),
+        solana_client,
+        payer,
+        tree_creator,
+        tree_data_account,
+    )
 }
 
 /// FinalizeTreeWithRoot instruction, which is the final step for creating a rollup

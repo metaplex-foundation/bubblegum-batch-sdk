@@ -22,4 +22,6 @@ pub enum RollupError {
     GenricErr(String),
     #[error("Nester error: {0}")]
     NestedErr(Box<dyn std::error::Error>),
+    #[error("Missing collection signature: {0}")]
+    MissingCollectionSignature(String),
 }

@@ -7,7 +7,7 @@ use mpl_bubblegum::types::{LeafSchema, MetadataArgs};
 use crate::errors::RollupError;
 use crate::merkle_tree_wrapper::{make_concurrent_merkle_tree, IChangeLog, ITree};
 
-use crate::model::{ChangeLogEventV1, RolledMintInstruction, Rollup};
+use crate::model::{ChangeLogEventV1, CollectionConfig, RolledMintInstruction, Rollup};
 
 use solana_sdk::keccak;
 use solana_sdk::pubkey::Pubkey;
@@ -38,6 +38,8 @@ pub struct RollupBuilder {
     pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
     pub canopy_leaves: Vec<[u8; 32]>,
+    /// config for verifying collection
+    pub collection_config: Option<CollectionConfig>,
 }
 
 impl RollupBuilder {
@@ -52,15 +54,16 @@ impl RollupBuilder {
         merkle.initialize().unwrap();
 
         Ok(RollupBuilder {
-            tree_account: tree_account,
-            max_depth: max_depth,
-            max_buffer_size: max_buffer_size,
-            canopy_depth: canopy_depth,
-            merkle: merkle,
+            tree_account,
+            max_depth,
+            max_buffer_size,
+            canopy_depth,
+            merkle,
             mints: Vec::new(),
             last_leaf_hash: [0; 32],
             //tree_buf: TreeBuf::<[u8; 32]>::new_with_default(max_depth + 1),
             canopy_leaves: Vec::new(),
+            collection_config: None,
         })
     }
 
@@ -115,8 +118,8 @@ impl RollupBuilder {
                 owner: *owner,
                 delegate: *delegate,
                 nonce,
-                data_hash: data_hash,
-                creator_hash: creator_hash,
+                data_hash,
+                creator_hash,
             },
             mint_args: metadata_args.clone(),
             authority: owner.clone(),
@@ -124,8 +127,22 @@ impl RollupBuilder {
         self.mints.push(rolled_mint);
     }
 
-    pub fn build_rollup(&self) -> Rollup {
-        Rollup {
+    pub fn build_rollup(&self) -> std::result::Result<Rollup, RollupError> {
+        self.mints.iter().try_for_each(|mint| {
+            if let Some(ref collection) = mint.mint_args.collection {
+                if !collection.verified {
+                    return Ok(());
+                }
+                if let Some(ref collection_config) = self.collection_config {
+                    if collection.verified && collection.key != collection_config.collection_mint {
+                        return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+                    }
+                }
+            }
+            Ok(())
+        })?;
+
+        Ok(Rollup {
             tree_id: self.tree_account,
             raw_metadata_map: HashMap::new(), // TODO: fill?
             max_depth: self.max_depth,
@@ -133,7 +150,12 @@ impl RollupBuilder {
             merkle_root: self.merkle.get_root(),
             last_leaf_hash: self.last_leaf_hash,
             max_buffer_size: self.max_buffer_size,
-        }
+        })
+    }
+
+    #[inline(always)]
+    pub fn setup_collection_config(&mut self, collection_config: CollectionConfig) {
+        self.collection_config = Some(collection_config)
     }
 }
 
@@ -232,7 +254,7 @@ mod test {
         let builder = RollupBuilder::new(Pubkey::new_unique(), 10, 32, 0).unwrap();
 
         // converting into rollup without adding any assets
-        let rollup = builder.build_rollup();
+        let rollup = builder.build_rollup().unwrap();
 
         // serializing into JSON, in real flow this JSON probably would be written to a file
         let mut buffer = BufWriter::new(Vec::new());
