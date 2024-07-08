@@ -138,6 +138,8 @@ impl RollupBuilder {
                         return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
                     }
                 }
+                // no collection_config but collection.verified == true for some mint
+                return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
             }
             Ok(())
         })?;
