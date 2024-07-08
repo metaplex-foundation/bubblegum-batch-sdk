@@ -32,7 +32,7 @@ const CANOPY_NODES_PER_TX: usize = 24;
 /// It allows to:
 /// 1) Create a merkle tree account for a rollup
 /// 2) Add assets (NFT) to the rollup off-chain
-/// 3) Push the rollup to a SOlana account in a form of bubblegum tree
+/// 3) Push the rollup to a Solana account in a form of a bubblegum tree
 ///
 /// TODO: add link to rollup documentation page.
 pub struct RollupClient {
@@ -56,7 +56,7 @@ impl RollupClient {
     ///
     /// # Arguments
     /// * `payer` - account that pays for the operation
-    /// * `tree_creator` - owner of tree account that to be created
+    /// * `tree_creator` - owner of tree account to be created
     /// * `tree_data_account` - a desired address for the account that will be created by the call
     ///   and used to store the merkle tree
     /// * `max_depth` - depth of desired merkle tree. Should be in range: TODO: add
@@ -84,7 +84,7 @@ impl RollupClient {
         let required_canopy = max_depth.saturating_sub(bubblegum::state::MAX_ACC_PROOFS_SIZE);
         if canopy_depth < required_canopy {
             return Err(RollupError::IllegalArgumets(format!(
-                "Three of depth={max_depth} reqiores as least canopy={required_canopy}"
+                "Three of depth={max_depth} requires as least canopy={required_canopy}"
             )));
         }
 
@@ -203,7 +203,7 @@ impl RollupClient {
 
             // Because canopy nodes are added by separate transactions, we may fall into situation when a portion of nodes
             // were added and then the application crushed, and we were not able to add the rest of canopy.
-            // That's why on the re-run, we must detect those previously created nodes, and add only nodes tha are missing.
+            // That's why on the re-run, we must detect those previously created nodes, and add only nodes that are missing.
             let existing_canopy = tree_data_info.non_empty_canopy_leaves()?;
             let (canopy_to_skip, canopy_to_add) = canopy_leaves.split_at(existing_canopy.len());
             for (ind, (to_add, existing)) in existing_canopy.into_iter().zip(canopy_to_skip).enumerate() {
@@ -237,8 +237,8 @@ impl RollupClient {
             }
         }
 
-        let rollup = rollup_builder.build_rollup()?;
-        // We're just using emaining_accounts to send proofs because they are of the same type
+        let rollup = rollup_builder.build_rollup();
+        // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle
             .get_rightmost_proof()

@@ -1,5 +1,5 @@
 //! This module contains util functionality for parsing out the information
-//! from a mergkle tree data ccount
+//! from a merkle tree data account
 
 use crate::{
     errors::RollupError,
@@ -35,6 +35,7 @@ impl<'a> TreeDataInfo<'a> {
             } => (max_depth, max_buffer_size),
         };
 
+        // Calculate the size of the merkle tree without the canopy. This will define the offset of the canopy buffer.
         let merkel_tree_size = calc_merkle_tree_size(max_depth, max_buffer_size, 0)
             .ok_or(RollupError::UnexpectedTreeSize(max_depth, max_buffer_size))?;
 
