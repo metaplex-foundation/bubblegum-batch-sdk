@@ -431,6 +431,43 @@ mod test {
         assert_eq!(rollup_builder.canopy_leaves.len(), 8);
     }
 
+    #[test]
+    fn test_metadata_arg_hash() {
+        let nonce = 1;
+
+        let leaf_schema = LeafSchema::V1{
+            id: Pubkey::new_unique(),
+            owner: Pubkey::new_unique(),
+            delegate: Pubkey::new_unique(),
+            nonce,
+            data_hash: [1;32],
+            creator_hash: [2;32],
+        };
+
+        let asset_creators = vec![
+            Creator{
+                address: Pubkey::new_unique(),
+                verified: true,
+                share: 100,
+            },
+        ];
+
+        let metadata_args = test_metadata_args(1u8, asset_creators.clone());
+
+        let tree_key = Pubkey::new_unique();
+
+        let metadata_arg_hash = MetadataArgsHash::new(&leaf_schema, &tree_key, &metadata_args);
+
+        let message = metadata_arg_hash.get_message();
+
+        let expected_message = vec![0, 0, 0, 0, 0, 0, 0, 1, 17, 158, 254, 9, 216, 30, 3, 175, 4, 90, 233, 26, 187, 181, 229, 17, 178, 64, 206, 55, 154, 174, 38, 135, 44, 250, 225, 237, 8, 147, 1, 72];
+
+        assert_eq!(message, expected_message);
+
+        let nonce_from_message = MetadataArgsHash::get_nonce_from_message(message);
+
+        assert_eq!(nonce_from_message, nonce);
+    }
 
     #[test]
     fn test_verify_one_creator() {
