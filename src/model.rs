@@ -5,8 +5,9 @@ use std::{
 
 use mpl_bubblegum::types::{LeafSchema, MetadataArgs};
 use serde::{Deserialize, Serialize};
+use serde_with::DisplayFromStr;
 use serde_json::value::RawValue;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
 /// an immutable storage, an picked up by DAS validatiors, that verify the correctness
@@ -58,9 +59,10 @@ pub struct RolledMintInstruction {
     // V0.1: enforce collection.verify == false
     // V0.1: enforce creator.verify == false
     // V0.2: add pub collection_signature: Option<Signature> - sign asset_id with collection authority
-    // V0.2: add pub creator_signature: Option<Map<Pubkey, Signature>> - sign asset_id with creator authority to ensure verified creator
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub authority: Pubkey,
+    #[serde(with = "serde_with::As::<Option<HashMap<DisplayFromStr, DisplayFromStr>>>")]
+    pub creator_signature: Option<HashMap<Pubkey, Signature>>, // signatures of the asset with the creator pubkey to ensure verified creator
 }
 
 #[derive(Default, Clone)]

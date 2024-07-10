@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use mpl_bubblegum::accounts::MerkleTree;
@@ -149,6 +150,7 @@ impl RollupClient {
                 leaf_update,
                 mint_args,
                 authority: _,
+                creator_signature,
             } = rolled_mint;
             let LeafSchema::V1 {
                 id: _,
@@ -158,7 +160,15 @@ impl RollupClient {
                 data_hash: _,
                 creator_hash: _,
             } = leaf_update;
-            rollup_builder.add_asset(owner, delegate, mint_args);
+
+            let metadata_arg_hash = rollup_builder.add_asset(owner, delegate, &mint_args)?;
+
+            if let Some(creator_signature) = creator_signature {
+                let mut message_and_signature = HashMap::new();
+                message_and_signature.insert(metadata_arg_hash.get_nonce(), creator_signature.clone());
+
+                rollup_builder.add_signatures_for_verified_creators(message_and_signature)?;
+            }
         }
 
         Ok(rollup_builder)
@@ -212,7 +222,7 @@ impl RollupClient {
             }
         }
 
-        let rollup = rollup_builder.build_rollup();
+        let rollup = rollup_builder.build_rollup()?;
         // We're just using emaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle

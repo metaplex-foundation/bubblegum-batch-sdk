@@ -22,4 +22,16 @@ pub enum RollupError {
     GenricErr(String),
     #[error("Nester error: {0}")]
     NestedErr(Box<dyn std::error::Error>),
+    #[error("Failed signature verification for creator: {0}")]
+    InvalidCreatorsSignature(String),
+    #[error("Missing rolled mint with ID: {0}")]
+    MissingRolledMint(u64),
+    #[error("Extra creators were passed for verification")]
+    ExtraCreatorsReceived,
+    #[error("Missed signatures for asset: {0}")]
+    MissedSignaturesForAsset(String),
+    #[error("Missed signature from creator: {0}")]
+    MissedSignatureFromCreator(String),
+    #[error("Cannot add signature for unverified creator: {0}")]
+    CannotAddSignatureForUnverifiedCreator(String),
 }
