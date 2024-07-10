@@ -1,12 +1,15 @@
 //! This module contains util functionality for parsing out the information
 //! from a merkle tree data account
 
+use std::mem::size_of;
+
 use crate::{
     errors::RollupError,
     merkle_tree_wrapper::{calc_merkle_tree_size, restore_canopy_depth_from_buffer},
 };
 use mpl_bubblegum::{accounts::MerkleTree, types::ConcurrentMerkleTreeHeaderData};
 use spl_account_compression::state::CONCURRENT_MERKLE_TREE_HEADER_SIZE_V1;
+use spl_merkle_tree_reference::{Node, EMPTY};
 
 /// Information about merkle tree stored in a solana account
 pub struct TreeDataInfo<'a> {
@@ -56,15 +59,16 @@ impl<'a> TreeDataInfo<'a> {
 
     /// Returns a sequence of non-empy canopy leaf nodes that previously had been added
     /// using `add_canopy` bubblegum instruction.
-    pub fn non_empty_canopy_leaves(&self) -> std::result::Result<Vec<&'a [u8; 32]>, RollupError> {
-        let leaves_start_position = self.canopy_buffer.len() - (1 << self.canopy_depth) * 32;
+    pub fn non_empty_canopy_leaves(&self) -> std::result::Result<Vec<&'a Node>, RollupError> {
+        let node_size = size_of::<Node>();
+        let leaves_start_position = self.canopy_buffer.len() - (1 << self.canopy_depth) * node_size;
         let leaves_buffer = &self.canopy_buffer[leaves_start_position..];
 
-        let mut canopy_leaves: Vec<&'a [u8; 32]> = Vec::with_capacity(self.canopy_leaves_count);
+        let mut canopy_leaves: Vec<&'a Node> = Vec::with_capacity(self.canopy_leaves_count);
         for i in 0..self.canopy_leaves_count {
-            match leaves_buffer[32 * i..32 * i + 32].try_into() {
+            match leaves_buffer[node_size * i..node_size * i + node_size].try_into() {
                 Ok(canopy_leaf) => {
-                    if canopy_leaf == &[0u8; 32] {
+                    if canopy_leaf == &EMPTY {
                         break;
                     }
                     canopy_leaves.push(canopy_leaf);

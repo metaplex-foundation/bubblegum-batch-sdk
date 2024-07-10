@@ -11,6 +11,7 @@ use solana_sdk::signature::Signature;
 use solana_sdk::signer::keypair::Keypair;
 use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
+use spl_merkle_tree_reference::Node;
 
 use crate::errors::RollupError;
 use crate::merkle_tree_wrapper::{
@@ -199,19 +200,7 @@ impl RollupClient {
         let tree_data_info = TreeDataInfo::from_bytes(tree_data_account.data())?;
 
         if tree_data_info.canopy_depth > 0 {
-            let canopy_leaves = &rollup_builder.canopy_leaves;
-
-            // Because canopy nodes are added by separate transactions, we may fall into situation when a portion of nodes
-            // were added and then the application crushed, and we were not able to add the rest of canopy.
-            // That's why on the re-run, we must detect those previously created nodes, and add only nodes that are missing.
-            let existing_canopy = tree_data_info.non_empty_canopy_leaves()?;
-            let (canopy_to_skip, canopy_to_add) = canopy_leaves.split_at(existing_canopy.len());
-            for (ind, (to_add, existing)) in existing_canopy.into_iter().zip(canopy_to_skip).enumerate() {
-                if to_add != existing {
-                    return Err(RollupError::CanopyLeafMistmatch(ind, *existing, *to_add));
-                }
-            }
-            let canopy_offset = canopy_to_skip.len();
+            let (canopy_to_add, canopy_offset) = calc_canopy_to_add(&tree_data_info, &rollup_builder)?;
 
             let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
             for (ind, chunk) in canopy_to_add.chunks(CANOPY_NODES_PER_TX).enumerate() {
@@ -237,7 +226,7 @@ impl RollupClient {
             }
         }
 
-        let rollup = rollup_builder.build_rollup();
+        let rollup = rollup_builder.build_rollup()?;
         // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle
@@ -312,4 +301,28 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
     let canopy_buf_size = merkle_tree.serialized_tree.len() - merkel_tree_size;
     let canopy_depth = restore_canopy_depth_from_buffer(canopy_buf_size as u32);
     Ok((max_depth, max_buffer_size, canopy_depth))
+}
+
+/// Because canopy nodes are added by separate transactions, we may fall into situation when a portion of nodes
+/// were added and then the application crushed, and we were not able to add the rest of canopy.
+/// That's why on the re-run, we must detect those previously created nodes, and add only nodes tha are missing.
+/// ## Args
+/// * `tree_data_info` - tree data account fetched from Solana
+/// * `rollup_builder` - the rollup builder object we are making rollup from
+fn calc_canopy_to_add<'a>(
+    tree_data_info: &'a TreeDataInfo,
+    rollup_builder: &'a RollupBuilder
+) -> std::result::Result<(&'a[Node], usize), RollupError> {
+    let canopy_leaves: &Vec<Node> = &rollup_builder.canopy_leaves;
+
+    let existing_canopy = tree_data_info.non_empty_canopy_leaves()?;
+    let (canopy_to_skip, canopy_to_add) = canopy_leaves.split_at(existing_canopy.len());
+    for (to_add, existing) in existing_canopy.into_iter().zip(canopy_to_skip) {
+        if to_add != existing {
+            return Ok((canopy_leaves, 0));
+        }
+    }
+    let canopy_offset = canopy_to_skip.len();
+
+    Ok((canopy_to_add, canopy_offset))
 }
