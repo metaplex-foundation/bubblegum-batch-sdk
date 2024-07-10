@@ -350,7 +350,7 @@ mod test {
     use super::*;
     use crate::model::Rollup;
     use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
-    use std::io::BufWriter;
+    use std::{io::BufWriter, str::FromStr};
 
     #[test]
     fn test_create_empty_rollup() {
@@ -442,9 +442,9 @@ mod test {
         let nonce = 1;
 
         let leaf_schema = LeafSchema::V1{
-            id: Pubkey::new_unique(),
-            owner: Pubkey::new_unique(),
-            delegate: Pubkey::new_unique(),
+            id: Pubkey::from_str("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM").unwrap(),
+            owner: Pubkey::from_str("1111111ogCyDbaRMvkdsHB3qfdyFYaG1WtRUAfdh").unwrap(),
+            delegate: Pubkey::from_str("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3").unwrap(),
             nonce,
             data_hash: [1;32],
             creator_hash: [2;32],
@@ -452,7 +452,7 @@ mod test {
 
         let asset_creators = vec![
             Creator{
-                address: Pubkey::new_unique(),
+                address: Pubkey::from_str("11111112cMQwSC9qirWGjZM6gLGwW69X22mqwLLGP").unwrap(),
                 verified: true,
                 share: 100,
             },
@@ -460,7 +460,7 @@ mod test {
 
         let metadata_args = test_metadata_args(1u8, asset_creators.clone());
 
-        let tree_key = Pubkey::new_unique();
+        let tree_key = Pubkey::from_str("111111131h1vYVSYuKP6AhS86fbRdMw9XHiZAvAaj").unwrap();
 
         let metadata_arg_hash = MetadataArgsHash::new(&leaf_schema, &tree_key, &metadata_args);
 
