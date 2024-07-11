@@ -1,5 +1,9 @@
 use std::{
-    fs::File, io::Write, ops::Deref, path::Path, process::{Child, Command}
+    fs::File,
+    io::Write,
+    ops::Deref,
+    path::Path,
+    process::{Child, Command},
 };
 
 use base64::Engine;
@@ -60,7 +64,7 @@ impl TestValidatorRunner {
 
         let port_string = self.port.to_string();
         cmd.arg("--rpc-port").arg(&port_string);
-        cmd.arg("--faucet-port").arg((&self.port+1).to_string());
+        cmd.arg("--faucet-port").arg((&self.port + 1).to_string());
 
         for contract in &self.contracts {
             let path_to_so = self

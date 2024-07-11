@@ -43,13 +43,7 @@ const TEST_PAYER: &[u8] = &[
 #[serial_test::serial]
 async fn test_complete_rollup_flow() {
     // Prepare env
-    let (
-        _validator,
-        solana_client,
-        payer,
-        tree_creator,
-        tree_data_account
-    ) = prepare_bubblegum_test_env(8899).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8899).await;
 
     // Starting testing
     let rollup_client = RollupClient::new(solana_client.clone());
@@ -135,13 +129,7 @@ async fn test_complete_rollup_flow() {
 #[serial_test::serial]
 async fn test_half_filled_assets() {
     // Prepare env
-    let (
-        _validator,
-        solana_client,
-        payer,
-        tree_creator,
-        tree_data_account
-    ) = prepare_bubblegum_test_env(8909).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8909).await;
 
     // Starting testing
     let rollup_client = RollupClient::new(solana_client.clone());
@@ -167,8 +155,127 @@ async fn test_half_filled_assets() {
         .await
         .unwrap();
 
-    for i in 1u8 .. (((1<<DEPTH) / 2) + 2) {
+    for i in 1u8..(((1 << DEPTH) / 2) + 2) {
         rollup_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
+    }
+
+    let _sig_2 = rollup_client
+        .finalize_tree(
+            &payer,
+            "http://mymetadata.ololo/",
+            "mymetadatahash",
+            &rollup_builder,
+            &tree_creator,
+            &payer,
+        )
+        .await
+        .unwrap();
+
+    // Verification:
+    let account_raw_bytes = solana_client
+        .get_account_data(&tree_data_account.pubkey())
+        .await
+        .unwrap();
+
+    let header_size = spl_account_compression::state::CONCURRENT_MERKLE_TREE_HEADER_SIZE_V1;
+    let tree_size = calc_merkle_tree_size(DEPTH as u32, BUFFER as u32, CANOPY).unwrap();
+    let canopy_size = calc_canopy_size(CANOPY);
+
+    unsafe {
+        let (orig_tree_ptr, _vtable_ptr): (*const u8, *const u8) =
+            std::mem::transmute(Box::into_raw(rollup_builder.merkle));
+        let original: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(orig_tree_ptr);
+
+        let acc_tree_ptr = account_raw_bytes.as_ptr().add(header_size);
+        let created: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(acc_tree_ptr);
+
+        // Thought the rollup contains multiple assets, from the perspective of bubblegum merkle tree,
+        // it is only one node added
+        assert_eq!(1, (*created).sequence_number);
+        assert_eq!((*original).rightmost_proof, (*created).rightmost_proof);
+    }
+
+    unsafe {
+        let canopy_segment_offset = account_raw_bytes.as_ptr().add(header_size + tree_size);
+        let canopy_ptr = canopy_segment_offset as *const [u8; 32];
+        for canopy_ind in 0..canopy_size / 32 {
+            assert_eq!(*canopy_ptr.add(canopy_ind), [0u8; 32]);
+        }
+    }
+}
+
+// Canopy leaf nodes are added in portions of maximum 24 nodes.
+// This means that if we have more than 24 canopy leaf nodes, theoretically
+// we can fall into a situation when after adding of a first portion of nodes,
+// the applocation goes down (e.g. electricity issue).
+// In this case, the functionality should be able to detect canopy leaf nodes
+// added in the previous session, and add only mission nodes.
+#[tokio::test]
+#[cfg(not(any(skip_integration_tests)))]
+#[serial_test::serial]
+async fn test_canopy_resume() {
+    // Prepare env
+
+    use mpl_bubblegum::instructions::AddCanopyBuilder;
+    use rollup_sdk::pubkey_util;
+    use solana_sdk::{system_program, transaction::Transaction};
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8919).await;
+
+    // Starting testing
+    let rollup_client = RollupClient::new(solana_client.clone());
+
+    const DEPTH: usize = 5;
+    const BUFFER: usize = 8;
+    const CANOPY: u32 = 3;
+
+    let _sig_1 = rollup_client
+        .prepare_tree(
+            &payer,
+            &tree_creator,
+            &tree_data_account,
+            DEPTH as u32,
+            BUFFER as u32,
+            CANOPY,
+        )
+        .await
+        .unwrap();
+
+    let mut rollup_builder = rollup_client
+        .create_rollup_builder(&tree_data_account.pubkey())
+        .await
+        .unwrap();
+
+    for i in 1u8..(((1 << DEPTH) / 2) + 2) {
+        rollup_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
+    }
+
+    {
+        let tree_config_account = pubkey_util::derive_tree_config_account(&rollup_builder.tree_account);
+        // simulating adding of canopy
+        let add_canopy_inst = AddCanopyBuilder::new()
+            .tree_config(tree_config_account)
+            .merkle_tree(rollup_builder.tree_account)
+            .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
+            .canopy_nodes(
+                rollup_builder
+                    .canopy_leaves
+                    .iter()
+                    .take(1)
+                    .map(|a| a.clone())
+                    .collect::<Vec<_>>(),
+            )
+            .start_index(0)
+            .log_wrapper(spl_noop::id())
+            .compression_program(spl_account_compression::id())
+            .system_program(system_program::id())
+            .instruction();
+        let tx = Transaction::new_signed_with_payer(
+            &[add_canopy_inst],
+            Some(&tree_creator.pubkey()),
+            &[&tree_creator],
+            solana_client.get_latest_blockhash().await.unwrap(),
+        );
+        solana_client.send_and_confirm_transaction(&tx).await.unwrap();
     }
 
     let _sig_2 = rollup_client
@@ -232,55 +339,61 @@ where
     f().await
 }
 
-async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair,) {
-        // Preparing account for test
-        let (payer, tree_creator, tree_data_account, registrar, voter) = prepare_test_accounts();
+async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair) {
+    // Preparing account for test
+    let (payer, tree_creator, tree_data_account, registrar, voter) = prepare_test_accounts();
 
-        // Launching solana-test-validator with registrar and voter test accounts
-        let mut tvr = TestValidatorRunner::new(port);
-        tvr.add_account(&registrar);
-        tvr.add_account(&voter);
-        tvr.add_program(&ContractToDeploy {
-            addr: bubblegum::ID,
-            path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
-        });
-        tvr.add_program(&ContractToDeploy {
-            addr: spl_account_compression::ID,
-            path: "../mpl-bubblegum/programs/.bin/spl_account_compression.so".to_string(),
-        });
-        tvr.add_program(&ContractToDeploy {
-            addr: spl_noop::ID,
-            path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
-        });
-    
-        let mut tvp_process = tvr.run().unwrap();
-    
-        let url = format!("http://127.0.0.1:{port}"); // Solana RPC node address
-        let solana_client = Arc::new(RpcClient::new_with_timeout(url, Duration::from_secs(1)));
-    
-        // Waiting for server to start
-        await_for(10, Duration::from_secs(1), || solana_client.get_health())
+    // Launching solana-test-validator with registrar and voter test accounts
+    let mut tvr = TestValidatorRunner::new(port);
+    tvr.add_account(&registrar);
+    tvr.add_account(&voter);
+    tvr.add_program(&ContractToDeploy {
+        addr: bubblegum::ID,
+        path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
+    });
+    tvr.add_program(&ContractToDeploy {
+        addr: spl_account_compression::ID,
+        path: "../mpl-bubblegum/programs/.bin/spl_account_compression.so".to_string(),
+    });
+    tvr.add_program(&ContractToDeploy {
+        addr: spl_noop::ID,
+        path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
+    });
+
+    let mut tvp_process = tvr.run().unwrap();
+
+    let url = format!("http://127.0.0.1:{port}"); // Solana RPC node address
+    let solana_client = Arc::new(RpcClient::new_with_timeout(url, Duration::from_secs(1)));
+
+    // Waiting for server to start
+    await_for(10, Duration::from_secs(1), || solana_client.get_health())
+        .await
+        .unwrap();
+
+    {
+        // Fund test accounts and wait for transaction to be commited.
+        let airdrop_sig_1 = solana_client
+            .request_airdrop(&payer.pubkey(), 20000000 * 10000)
             .await
             .unwrap();
-    
+        let airdrop_sig_2 = solana_client
+            .request_airdrop(&tree_creator.pubkey(), 20000000 * 10000)
+            .await
+            .unwrap();
+        while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap()
+            && solana_client.confirm_transaction(&airdrop_sig_2).await.unwrap())
         {
-            // Fund test accounts and wait for transaction to be commited.
-            let airdrop_sig_1 = solana_client
-                .request_airdrop(&payer.pubkey(), 20000000 * 10000)
-                .await
-                .unwrap();
-            let airdrop_sig_2 = solana_client
-                .request_airdrop(&tree_creator.pubkey(), 20000000 * 10000)
-                .await
-                .unwrap();
-            while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap()
-                && solana_client.confirm_transaction(&airdrop_sig_2).await.unwrap())
-            {
-                sleep(Duration::from_secs(1)).await;
-            }
+            sleep(Duration::from_secs(1)).await;
         }
+    }
 
-        (ChildProcess(tvp_process), solana_client, payer, tree_creator, tree_data_account)
+    (
+        ChildProcess(tvp_process),
+        solana_client,
+        payer,
+        tree_creator,
+        tree_data_account,
+    )
 }
 
 /// FinalizeTreeWithRoot instruction, which is the final step for creating a rollup
