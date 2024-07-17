@@ -244,13 +244,13 @@ impl RollupClient {
             .tree_config(tree_config_account)
             .staker(staker.pubkey())
             .fee_receiver(bubblegum::state::FEE_RECEIVER)
-            .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
+            .tree_creator_or_delegate(tree_creator.pubkey()) // Correct?
             .registrar(pubkey_util::get_registrar_key())
             .voter(pubkey_util::get_voter_key(
                 &pubkey_util::get_registrar_key(),
                 &payer.pubkey(),
             ))
-            .rightmost_root(rollup.merkle_root)
+            .root(rollup.merkle_root)
             .rightmost_leaf(rollup.last_leaf_hash)
             .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
             .metadata_url(metadata_url.to_string())
