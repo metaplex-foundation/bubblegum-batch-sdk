@@ -25,13 +25,13 @@ solana-program = "~1.18"
 solana-client = "~1.18"
 solana-rpc-client-api = "~1.18"
 
-bubblegum = { path = "../mpl-bubblegum/programs/bubblegum/program"}
-mpl-bubblegum = { path = "../mpl-bubblegum/clients/rust", features = ["serde"]}
-spl-account-compression = { path = "../mpl-bubblegum/solana-program-library/account-compression/programs/account-compression", features = ["no-entrypoint", "cpi"] }
-spl-concurrent-merkle-tree = { path = "../mpl-bubblegum/solana-program-library/libraries/concurrent-merkle-tree", default-features = false} 
-spl-merkle-tree-reference = { path = "../mpl-bubblegum/solana-program-library/libraries/merkle-tree-reference" }
+bubblegum = { path = "../blockbuster/mpl-bubblegum/programs/bubblegum/program"}
+mpl-bubblegum = { path = "../blockbuster/mpl-bubblegum/clients/rust", features = ["serde"]}
+spl-account-compression = { path = "../blockbuster/mpl-bubblegum/solana-program-library/account-compression/programs/account-compression", features = ["no-entrypoint", "cpi"] }
+spl-concurrent-merkle-tree = { path = "../blockbuster/mpl-bubblegum/solana-program-library/libraries/concurrent-merkle-tree", default-features = false} 
+spl-merkle-tree-reference = { path = "../blockbuster/mpl-bubblegum/solana-program-library/libraries/merkle-tree-reference" }
 spl-noop = "0.2.0"
-mplx-staking-states = { path="../mpl-bubblegum/mplx-staking/program-states"}
+mplx-staking-states = { path="../blockbuster/mpl-bubblegum/mplx-staking/program-states"}
 
 [dev-dependencies]
 tokio = "1"
