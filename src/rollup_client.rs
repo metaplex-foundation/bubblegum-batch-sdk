@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use mpl_bubblegum::accounts::MerkleTree;
@@ -12,6 +13,7 @@ use solana_sdk::signature::Signature;
 use solana_sdk::signer::keypair::Keypair;
 use solana_sdk::signer::Signer;
 use solana_sdk::transaction::Transaction;
+use spl_merkle_tree_reference::Node;
 
 use crate::errors::RollupError;
 use crate::merkle_tree_wrapper::{
@@ -20,6 +22,7 @@ use crate::merkle_tree_wrapper::{
 use crate::model::{RolledMintInstruction, Rollup};
 use crate::pubkey_util;
 use crate::rollup_builder::RollupBuilder;
+use crate::tree_data_acc::TreeDataInfo;
 
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{system_instruction, system_program};
@@ -34,6 +37,8 @@ const CANOPY_NODES_PER_TX: usize = 24;
 /// 1) Create a merkle tree account for a rollup
 /// 2) Add assets (NFT) to the rollup off-chain
 /// 3) Push the rollup to a SOlana account in a form of bubblegum tree
+///
+/// 3) Push the rollup to a Solana account in a form of a bubblegum tree
 ///
 /// TODO: add link to rollup documentation page.
 pub struct RollupClient {
@@ -57,7 +62,7 @@ impl RollupClient {
     ///
     /// # Arguments
     /// * `payer` - account that pays for the operation
-    /// * `tree_creator` - owner of tree account that to be created
+    /// * `tree_creator` - owner of tree account to be created
     /// * `tree_data_account` - a desired address for the account that will be created by the call
     ///   and used to store the merkle tree
     /// * `max_depth` - depth of desired merkle tree. Should be in range: TODO: add
@@ -85,7 +90,7 @@ impl RollupClient {
         let required_canopy = max_depth.saturating_sub(bubblegum::state::MAX_ACC_PROOFS_SIZE);
         if canopy_depth < required_canopy {
             return Err(RollupError::IllegalArgumets(format!(
-                "Three of depth={max_depth} reqiores as least canopy={required_canopy}"
+                "Three of depth={max_depth} requires as least canopy={required_canopy}"
             )));
         }
 
@@ -152,6 +157,7 @@ impl RollupClient {
                 leaf_update,
                 mint_args,
                 authority: _,
+                creator_signature,
             } = rolled_mint;
             let LeafSchema::V1 {
                 id: _,
@@ -161,7 +167,15 @@ impl RollupClient {
                 data_hash: _,
                 creator_hash: _,
             } = leaf_update;
-            rollup_builder.add_asset(owner, delegate, mint_args);
+
+            let metadata_arg_hash = rollup_builder.add_asset(owner, delegate, &mint_args)?;
+
+            if let Some(creator_signature) = creator_signature {
+                let mut message_and_signature = HashMap::new();
+                message_and_signature.insert(metadata_arg_hash.get_nonce(), creator_signature.clone());
+
+                rollup_builder.add_signatures_for_verified_creators(message_and_signature)?;
+            }
         }
 
         Ok(rollup_builder)
@@ -182,23 +196,25 @@ impl RollupClient {
         metadata_url: &str,
         metadata_hash: &str,
         rollup_builder: &RollupBuilder,
-        tree_creator: &Keypair, // TODO: think how to derive this argument from the RollupBuilder
+        tree_creator: &Keypair,
         staker: &Keypair,
     ) -> Result<Signature, RollupError> {
         let tree_config_account = pubkey_util::derive_tree_config_account(&rollup_builder.tree_account);
 
-        let canopy_depth = parse_tree_size(&self.client.get_account(&rollup_builder.tree_account).await?)?.2;
-        if canopy_depth > 0 {
-            let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
-            let canopy_leaves = &rollup_builder.canopy_leaves;
+        let tree_data_account = &self.client.get_account(&rollup_builder.tree_account).await?;
+        let tree_data_info = TreeDataInfo::from_bytes(tree_data_account.data())?;
 
-            for (ind, chunk) in canopy_leaves.chunks(CANOPY_NODES_PER_TX).enumerate() {
+        if tree_data_info.canopy_depth > 0 {
+            let (canopy_to_add, canopy_offset) = calc_canopy_to_add(&tree_data_info, &rollup_builder)?;
+
+            let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
+            for (ind, chunk) in canopy_to_add.chunks(CANOPY_NODES_PER_TX).enumerate() {
                 let add_canopy_inst = AddCanopyBuilder::new()
                     .tree_config(tree_config_account)
                     .merkle_tree(rollup_builder.tree_account)
                     .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
                     .canopy_nodes(chunk.to_vec())
-                    .start_index((ind * CANOPY_NODES_PER_TX) as u32)
+                    .start_index((canopy_offset + ind * CANOPY_NODES_PER_TX) as u32)
                     .log_wrapper(spl_noop::id())
                     .compression_program(spl_account_compression::id())
                     .system_program(system_program::id())
@@ -215,6 +231,7 @@ impl RollupClient {
             }
         }
 
+        let rollup = rollup_builder.build_rollup()?;
         // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle
@@ -342,6 +359,30 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
     let merkel_tree_size = calc_merkle_tree_size(max_depth, max_buffer_size, 0)
         .ok_or(RollupError::UnexpectedTreeSize(max_depth, max_buffer_size))?;
     let canopy_buf_size = merkle_tree.serialized_tree.len() - merkel_tree_size;
-    let canopy_size = restore_canopy_depth_from_buffer(canopy_buf_size as u32);
-    Ok((max_depth, max_buffer_size, canopy_size))
+    let canopy_depth = restore_canopy_depth_from_buffer(canopy_buf_size as u32);
+    Ok((max_depth, max_buffer_size, canopy_depth))
+}
+
+/// Because canopy nodes are added by separate transactions, we may fall into situation when a portion of nodes
+/// were added and then the application crushed, and we were not able to add the rest of canopy.
+/// That's why on the re-run, we must detect those previously created nodes, and add only nodes tha are missing.
+/// ## Args
+/// * `tree_data_info` - tree data account fetched from Solana
+/// * `rollup_builder` - the rollup builder object we are making rollup from
+fn calc_canopy_to_add<'a>(
+    tree_data_info: &'a TreeDataInfo,
+    rollup_builder: &'a RollupBuilder
+) -> std::result::Result<(&'a[Node], usize), RollupError> {
+    let canopy_leaves: &Vec<Node> = &rollup_builder.canopy_leaves;
+
+    let existing_canopy = tree_data_info.non_empty_canopy_leaves()?;
+    let (canopy_to_skip, canopy_to_add) = canopy_leaves.split_at(existing_canopy.len());
+    for (to_add, existing) in existing_canopy.into_iter().zip(canopy_to_skip) {
+        if to_add != existing {
+            return Ok((canopy_leaves, 0));
+        }
+    }
+    let canopy_offset = canopy_to_skip.len();
+
+    Ok((canopy_to_add, canopy_offset))
 }

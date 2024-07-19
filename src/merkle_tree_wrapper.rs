@@ -234,7 +234,7 @@ pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<
 
 make_changelog_impls!(3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 24, 26, 30);
 
-// TODO: remove before release
+// TODO: remove the comment before release
 // Calc tree size in TS
 // https://github.com/StanChe/solana-program-library/blob/721812863c383c69e5743573c6bc3b79678c4a14/account-compression/sdk/src/accounts/ConcurrentMerkleTreeAccount.ts#L180
 

@@ -30,7 +30,6 @@ mpl-bubblegum = { path = "../mpl-bubblegum/clients/rust", features = ["serde"]}
 spl-account-compression = { path = "../mpl-bubblegum/solana-program-library/account-compression/programs/account-compression", features = ["no-entrypoint", "cpi"] }
 spl-concurrent-merkle-tree = { path = "../mpl-bubblegum/solana-program-library/libraries/concurrent-merkle-tree", default-features = false} 
 spl-merkle-tree-reference = { path = "../mpl-bubblegum/solana-program-library/libraries/merkle-tree-reference" }
-spl-token = {path = "../mpl-bubblegum/solana-program-library/token/program", features = ["no-entrypoint"]}
 spl-noop = "0.2.0"
 mplx-staking-states = { path="../mpl-bubblegum/mplx-staking/program-states"}
 
