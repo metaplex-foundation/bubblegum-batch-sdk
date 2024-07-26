@@ -27,11 +27,11 @@ solana-rpc-client-api = "~1.18"
 
 bubblegum = { path = "../blockbuster/mpl-bubblegum/programs/bubblegum/program"}
 mpl-bubblegum = { path = "../blockbuster/mpl-bubblegum/clients/rust", features = ["serde"]}
-spl-account-compression = { path = "../blockbuster/mpl-bubblegum/solana-program-library/account-compression/programs/account-compression", features = ["no-entrypoint", "cpi"] }
-spl-concurrent-merkle-tree = { path = "../blockbuster/mpl-bubblegum/solana-program-library/libraries/concurrent-merkle-tree", default-features = false} 
-spl-merkle-tree-reference = { path = "../blockbuster/mpl-bubblegum/solana-program-library/libraries/merkle-tree-reference" }
+spl-account-compression = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root", features = ["no-entrypoint", "cpi"] }
+spl-concurrent-merkle-tree = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root", default-features = false }
+spl-merkle-tree-reference = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root" }
 spl-noop = "0.2.0"
-mplx-staking-states = { path="../blockbuster/mpl-bubblegum/mplx-staking/program-states"}
+mplx-staking-states = { git = "https://github.com/adm-metaex/mplx-staking.git" }
 
 [dev-dependencies]
 tokio = "1"
