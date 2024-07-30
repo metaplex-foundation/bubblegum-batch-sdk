@@ -73,7 +73,9 @@ async fn test_complete_rollup_flow() {
         rollup_builder.max_depth, rollup_builder.max_buffer_size, rollup_builder.canopy_depth
     );
 
-    rollup_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(1u8)).unwrap();
+    rollup_builder
+        .add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(1u8))
+        .unwrap();
 
     let _sig_2 = rollup_client
         .finalize_tree(

@@ -290,13 +290,13 @@ impl RollupClient {
                 .tree_config(tree_config_account)
                 .staker(staker)
                 .fee_receiver(bubblegum::state::FEE_RECEIVER)
-                .incoming_tree_delegate(tree_creator) // Correct?
+                .tree_creator_or_delegate(tree_creator) // Correct?
                 .registrar(pubkey_util::get_registrar_key())
                 .voter(pubkey_util::get_voter_key(
                     &pubkey_util::get_registrar_key(),
                     &payer.pubkey(),
                 ))
-                .rightmost_root(rollup.merkle_root)
+                .root(rollup.merkle_root)
                 .rightmost_leaf(rollup.last_leaf_hash)
                 .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
                 .metadata_url(metadata_url.to_string())
@@ -317,13 +317,13 @@ impl RollupClient {
             .tree_config(tree_config_account)
             .staker(staker)
             .fee_receiver(bubblegum::state::FEE_RECEIVER)
-            .incoming_tree_delegate(tree_creator) // Correct?
+            .tree_creator_or_delegate(tree_creator) // Correct?
             .registrar(pubkey_util::get_registrar_key())
             .voter(pubkey_util::get_voter_key(
                 &pubkey_util::get_registrar_key(),
                 &payer.pubkey(),
             ))
-            .rightmost_root(rollup.merkle_root)
+            .root(rollup.merkle_root)
             .rightmost_leaf(rollup.last_leaf_hash)
             .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
             .metadata_url(metadata_url.to_string())
@@ -371,8 +371,8 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
 /// * `rollup_builder` - the rollup builder object we are making rollup from
 fn calc_canopy_to_add<'a>(
     tree_data_info: &'a TreeDataInfo,
-    rollup_builder: &'a RollupBuilder
-) -> std::result::Result<(&'a[Node], usize), RollupError> {
+    rollup_builder: &'a RollupBuilder,
+) -> std::result::Result<(&'a [Node], usize), RollupError> {
     let canopy_leaves: &Vec<Node> = &rollup_builder.canopy_leaves;
 
     let existing_canopy = tree_data_info.non_empty_canopy_leaves()?;
