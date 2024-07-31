@@ -231,7 +231,7 @@ impl RollupClient {
             }
         }
 
-        let rollup = rollup_builder.build_rollup()?;
+        rollup_builder.build_rollup()?;
         // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle

@@ -217,6 +217,19 @@ impl RollupBuilder {
                     }
                 }
             }
+            if let Some(ref collection) = rolled_mint.mint_args.collection {
+                if !collection.verified {
+                    continue;
+                }
+                if let Some(ref collection_config) = self.collection_config {
+                    if collection.key != collection_config.collection_mint {
+                        return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+                    }
+                    continue;
+                }
+                // no collection_config but collection.verified == true for some mint
+                return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+            }
         }
 
         Ok(Rollup {

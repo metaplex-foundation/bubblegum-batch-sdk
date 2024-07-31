@@ -37,6 +37,8 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::signer::keypair::Keypair;
 use mpl_bubblegum::types::MetadataArgs;
 use std::sync::Arc;
+use rollup_sdk::model::CollectionConfig;
+use std::time::Duration;
 
 let payer: Keypair = todo!("the one who pays for the rollup");
 let staker: Keypair = todo!("can be same as payer");
@@ -63,8 +65,18 @@ let sign = rollup_client.prepare_tree(
     4   // canopy tree depth
 ).awailt()?;
 
-let rollup_builder = rollup_client.create_rollup_builder(&tree_data_account.pubkey())
-    .await()?;
+let mut rollup_builder = rollup_client.create_rollup_builder(&tree_data_account.pubkey())
+    .await?;
+
+// Setup collection config if you want to add assets with verified collection (optional step)
+let collection_authority = todo!("keypair for collection authority");
+rollup_builder.setup_collection_config(CollectionConfig {
+    collection_authority,
+    collection_authority_record_pda: None,
+    collection_mint: todo!("add collection pubkey"),
+    collection_metadata: todo!("add collection metadata pubkey"),
+    edition_account: todo!("add collection edition account pubkey"),
+});
 
 // Adding NTF asset
 let assets_to_add: &[(MetadataArgs, Pubkey, Pubkey)] = todo!("load/prepare");
