@@ -294,11 +294,11 @@ pub fn calc_canopy_size(canopy_depth: u32) -> usize {
 /// 1) The header of tree data account
 /// 2) Body of [ConcurrentMerkleTree] of the given size
 /// 3) Buffer for canopy leaf nodes, if the canopy usage is switched on
-/// 
+///
 /// Reminder: canopy - is the upper part of the merkle tree not including the root.
 /// (how much of tree layers it includes is defined by the canopy depth argument).
 /// It is used to be able to transfer all required proofs for trees with depth greater than 17.
-/// 
+///
 /// Args:
 /// * `max_depth` - merkle tree depth
 /// * `max_buffer_size` - size of the buffer for concurrent changes

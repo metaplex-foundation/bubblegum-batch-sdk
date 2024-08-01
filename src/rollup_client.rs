@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use mpl_bubblegum::accounts::MerkleTree;
-use mpl_bubblegum::instructions::{AddCanopyBuilder, FinalizeTreeWithRootBuilder, PrepareTreeBuilder};
+use mpl_bubblegum::instructions::{
+    AddCanopyBuilder, FinalizeTreeWithRootAndCollectionBuilder, FinalizeTreeWithRootBuilder, PrepareTreeBuilder,
+};
 use mpl_bubblegum::types::{ConcurrentMerkleTreeHeaderData, LeafSchema};
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
@@ -26,6 +28,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::{system_instruction, system_program};
 
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_program::instruction::Instruction;
 
 const CANOPY_NODES_PER_TX: usize = 24;
 
@@ -226,7 +229,7 @@ impl RollupClient {
             }
         }
 
-        let rollup = rollup_builder.build_rollup()?;
+        rollup_builder.build_rollup()?;
         // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = rollup_builder
             .merkle
@@ -238,41 +241,96 @@ impl RollupClient {
                 is_writable: false,
             })
             .collect::<Vec<_>>();
-        let finalize_instruction = FinalizeTreeWithRootBuilder::new()
-            .payer(payer.pubkey())
-            .merkle_tree(rollup.tree_id)
-            .tree_config(tree_config_account)
-            .staker(staker.pubkey())
-            .fee_receiver(bubblegum::state::FEE_RECEIVER)
-            .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
-            .registrar(pubkey_util::get_registrar_key())
-            .voter(pubkey_util::get_voter_key(
-                &pubkey_util::get_registrar_key(),
-                &payer.pubkey(),
-            ))
-            .rightmost_root(rollup.merkle_root)
-            .rightmost_leaf(rollup.last_leaf_hash)
-            .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
-            .metadata_url(metadata_url.to_string())
-            .metadata_hash(metadata_hash.to_string())
-            .add_remaining_accounts(&remaining_accounts)
-            .log_wrapper(spl_noop::id())
-            .compression_program(spl_account_compression::id())
-            .system_program(system_program::id())
-            .instruction();
+        let finalize_instruction = self.finalize_tree_instruction(
+            payer,
+            rollup_builder,
+            metadata_url,
+            metadata_hash,
+            &remaining_accounts,
+            tree_config_account,
+            staker.pubkey(),
+            tree_creator.pubkey(),
+        )?;
+        let mut signing_keypairs = [payer, tree_creator, staker].to_vec();
+        if let Some(ref collection_config) = rollup_builder.collection_config {
+            signing_keypairs.push(&collection_config.collection_authority);
+        }
 
         let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
 
         let tx = Transaction::new_signed_with_payer(
             &[compute_budget, finalize_instruction],
             Some(&tree_creator.pubkey()),
-            &[payer, tree_creator, staker],
+            signing_keypairs.as_slice(),
             self.client.get_latest_blockhash().await?,
         );
 
         let signature = self.client.send_and_confirm_transaction(&tx).await?;
 
         Ok(signature)
+    }
+
+    fn finalize_tree_instruction(
+        &self,
+        payer: &Keypair,
+        rollup_builder: &RollupBuilder,
+        metadata_url: &str,
+        metadata_hash: &str,
+        remaining_accounts: &Vec<AccountMeta>,
+        tree_config_account: Pubkey,
+        staker: Pubkey,
+        tree_creator: Pubkey,
+    ) -> std::result::Result<Instruction, RollupError> {
+        let rollup = rollup_builder.build_rollup()?;
+        if let Some(ref collection_config) = rollup_builder.collection_config {
+            return Ok(FinalizeTreeWithRootAndCollectionBuilder::new()
+                .merkle_tree(rollup.tree_id)
+                .tree_config(tree_config_account)
+                .staker(staker)
+                .fee_receiver(bubblegum::state::FEE_RECEIVER)
+                .tree_creator_or_delegate(tree_creator) // Correct?
+                .registrar(pubkey_util::get_registrar_key())
+                .voter(pubkey_util::get_voter_key(
+                    &pubkey_util::get_registrar_key(),
+                    &payer.pubkey(),
+                ))
+                .root(rollup.merkle_root)
+                .rightmost_leaf(rollup.last_leaf_hash)
+                .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
+                .metadata_url(metadata_url.to_string())
+                .metadata_hash(metadata_hash.to_string())
+                .add_remaining_accounts(remaining_accounts)
+                .log_wrapper(spl_noop::id())
+                .compression_program(spl_account_compression::id())
+                .system_program(system_program::id())
+                .collection_authority(collection_config.collection_authority.pubkey())
+                .collection_mint(collection_config.collection_mint)
+                .collection_edition(collection_config.edition_account)
+                .collection_metadata(collection_config.collection_metadata)
+                .collection_authority_record_pda(collection_config.collection_authority_record_pda)
+                .instruction());
+        }
+        Ok(FinalizeTreeWithRootBuilder::new()
+            .merkle_tree(rollup.tree_id)
+            .tree_config(tree_config_account)
+            .staker(staker)
+            .fee_receiver(bubblegum::state::FEE_RECEIVER)
+            .tree_creator_or_delegate(tree_creator) // Correct?
+            .registrar(pubkey_util::get_registrar_key())
+            .voter(pubkey_util::get_voter_key(
+                &pubkey_util::get_registrar_key(),
+                &payer.pubkey(),
+            ))
+            .root(rollup.merkle_root)
+            .rightmost_leaf(rollup.last_leaf_hash)
+            .rightmost_index((rollup.rolled_mints.len() as u32).saturating_sub(1))
+            .metadata_url(metadata_url.to_string())
+            .metadata_hash(metadata_hash.to_string())
+            .add_remaining_accounts(remaining_accounts)
+            .log_wrapper(spl_noop::id())
+            .compression_program(spl_account_compression::id())
+            .system_program(system_program::id())
+            .instruction())
     }
 }
 
@@ -311,8 +369,8 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
 /// * `rollup_builder` - the rollup builder object we are making rollup from
 fn calc_canopy_to_add<'a>(
     tree_data_info: &'a TreeDataInfo,
-    rollup_builder: &'a RollupBuilder
-) -> std::result::Result<(&'a[Node], usize), RollupError> {
+    rollup_builder: &'a RollupBuilder,
+) -> std::result::Result<(&'a [Node], usize), RollupError> {
     let canopy_leaves: &Vec<Node> = &rollup_builder.canopy_leaves;
 
     let existing_canopy = tree_data_info.non_empty_canopy_leaves()?;

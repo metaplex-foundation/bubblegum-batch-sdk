@@ -34,4 +34,6 @@ pub enum RollupError {
     CannotAddSignatureForUnverifiedCreator(String),
     #[error("Cannot parse canopy leaf nodes from tree data account")]
     CanopyCoercionErr,
+    #[error("Missing collection signature: {0}")]
+    MissingCollectionSignature(String),
 }

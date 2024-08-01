@@ -5,8 +5,9 @@ use std::{
 
 use mpl_bubblegum::types::{LeafSchema, MetadataArgs};
 use serde::{Deserialize, Serialize};
-use serde_with::DisplayFromStr;
 use serde_json::value::RawValue;
+use serde_with::DisplayFromStr;
+use solana_sdk::signature::Keypair;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
@@ -99,4 +100,12 @@ impl From<spl_account_compression::state::PathNode> for PathNode {
             index: value.index,
         }
     }
+}
+
+pub struct CollectionConfig {
+    pub collection_authority: Keypair,
+    pub collection_authority_record_pda: Option<Pubkey>,
+    pub collection_mint: Pubkey,
+    pub collection_metadata: Pubkey,
+    pub edition_account: Pubkey,
 }

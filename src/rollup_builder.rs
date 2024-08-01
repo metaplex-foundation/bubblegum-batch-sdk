@@ -8,7 +8,7 @@ use solana_sdk::signature::Signature;
 use crate::errors::RollupError;
 use crate::merkle_tree_wrapper::{make_concurrent_merkle_tree, IChangeLog, ITree};
 
-use crate::model::{ChangeLogEventV1, RolledMintInstruction, Rollup};
+use crate::model::{ChangeLogEventV1, CollectionConfig, RolledMintInstruction, Rollup};
 
 use solana_sdk::keccak;
 use solana_sdk::pubkey::Pubkey;
@@ -39,6 +39,8 @@ pub struct RollupBuilder {
     pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
     pub canopy_leaves: Vec<[u8; 32]>,
+    /// config for verifying collection
+    pub collection_config: Option<CollectionConfig>,
 }
 
 impl RollupBuilder {
@@ -53,14 +55,15 @@ impl RollupBuilder {
         merkle.initialize().unwrap();
 
         Ok(RollupBuilder {
-            tree_account: tree_account,
-            max_depth: max_depth,
-            max_buffer_size: max_buffer_size,
-            canopy_depth: canopy_depth,
-            merkle: merkle,
             mints: BTreeMap::new(),
+            tree_account,
+            max_depth,
+            max_buffer_size,
+            canopy_depth,
+            merkle,
             last_leaf_hash: [0; 32],
             canopy_leaves: Vec::new(),
+            collection_config: None,
         })
     }
 
@@ -69,7 +72,12 @@ impl RollupBuilder {
     /// - `owner` - asset owner
     /// - `delegate` - [delegate authority](https://developers.metaplex.com/bubblegum/delegate-cnfts) of the asset allowed to perform actions on behalf of the owner - transferring or burning
     /// - `metadata_args` - asset details as [MetadataArgs]
-    pub fn add_asset(&mut self, owner: &Pubkey, delegate: &Pubkey, metadata_args: &MetadataArgs) -> std::result::Result<MetadataArgsHash, RollupError> {
+    pub fn add_asset(
+        &mut self,
+        owner: &Pubkey,
+        delegate: &Pubkey,
+        metadata_args: &MetadataArgs,
+    ) -> std::result::Result<MetadataArgsHash, RollupError> {
         let metadata_args_hash = hash_metadata_args(
             self.mints.len() as u64,
             &self.tree_account,
@@ -115,8 +123,8 @@ impl RollupBuilder {
                 owner: *owner,
                 delegate: *delegate,
                 nonce,
-                data_hash: data_hash,
-                creator_hash: creator_hash,
+                data_hash,
+                creator_hash,
             },
             mint_args: metadata_args.clone(),
             authority: owner.clone(),
@@ -130,11 +138,14 @@ impl RollupBuilder {
     /// Adds signatures for verified creators.
     /// It takes creator's signatures and verifies them.
     /// Only if signature is valid it saves it
-    /// 
+    ///
     /// ## Arguments
     /// - `nonce_and_creator_signatures` - hashMap with creators signatures for assets. As a key in first hashMap
     /// asset nonce is using. Nested hashMap contains pairs of creator Pubkey and signature.
-    pub fn add_signatures_for_verified_creators(&mut self, nonce_and_creator_signatures: HashMap<u64, HashMap<Pubkey, Signature>>) -> std::result::Result<(), RollupError> {
+    pub fn add_signatures_for_verified_creators(
+        &mut self,
+        nonce_and_creator_signatures: HashMap<u64, HashMap<Pubkey, Signature>>,
+    ) -> std::result::Result<(), RollupError> {
         for (asset_nonce, creator_signature) in nonce_and_creator_signatures {
             if creator_signature.is_empty() {
                 // not to set Some() to creator_signature if HashMap is empty
@@ -146,17 +157,16 @@ impl RollupBuilder {
 
                 let mut rolled_signatures = rolled_mint.creator_signature.clone().unwrap_or_default();
 
-                let metadata_hash = MetadataArgsHash::new(
-                    &rolled_mint.leaf_update,
-                    &self.tree_account,
-                    &rolled_mint.mint_args,
-                );
+                let metadata_hash =
+                    MetadataArgsHash::new(&rolled_mint.leaf_update, &self.tree_account, &rolled_mint.mint_args);
                 let signed_message = metadata_hash.get_message();
 
                 for creator in rolled_mint.mint_args.creators.iter_mut() {
                     if let Some(signature) = creator_signature.get(&creator.address) {
                         if !creator.verified {
-                            return Err(RollupError::CannotAddSignatureForUnverifiedCreator(creator.address.to_string()));
+                            return Err(RollupError::CannotAddSignatureForUnverifiedCreator(
+                                creator.address.to_string(),
+                            ));
                         }
 
                         if !verify_signature(&creator.address, &signed_message, signature) {
@@ -176,7 +186,10 @@ impl RollupBuilder {
         Ok(())
     }
 
-    fn check_extra_creators(asset_creators: &[Creator], creator_signatures: &HashMap<Pubkey, Signature>) -> std::result::Result<(), RollupError> {
+    fn check_extra_creators(
+        asset_creators: &[Creator],
+        creator_signatures: &HashMap<Pubkey, Signature>,
+    ) -> std::result::Result<(), RollupError> {
         let asset_creator_keys: HashSet<_> = asset_creators.iter().map(|c| &c.address).collect();
         let creator_keys_from_signatures: HashSet<_> = creator_signatures.keys().collect();
 
@@ -185,7 +198,6 @@ impl RollupBuilder {
         if !extra_creators.is_empty() {
             return Err(RollupError::ExtraCreatorsReceived);
         }
-
         Ok(())
     }
 
@@ -199,12 +211,27 @@ impl RollupBuilder {
                             return Err(RollupError::MissedSignatureFromCreator(creator.address.to_string()));
                         }
                     } else {
-                        return Err(RollupError::MissedSignaturesForAsset(rolled_mint.leaf_update.id().to_string()));
+                        return Err(RollupError::MissedSignaturesForAsset(
+                            rolled_mint.leaf_update.id().to_string(),
+                        ));
                     }
                 }
             }
+            if let Some(ref collection) = rolled_mint.mint_args.collection {
+                if !collection.verified {
+                    continue;
+                }
+                if let Some(ref collection_config) = self.collection_config {
+                    if collection.key != collection_config.collection_mint {
+                        return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+                    }
+                    continue;
+                }
+                // no collection_config but collection.verified == true for some mint
+                return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+            }
         }
-        
+
         Ok(Rollup {
             tree_id: self.tree_account,
             raw_metadata_map: HashMap::new(), // TODO: fill? this may be provided by the client for every asset, maybe in add_asset as an optional parameter
@@ -214,6 +241,11 @@ impl RollupBuilder {
             last_leaf_hash: self.last_leaf_hash,
             max_buffer_size: self.max_buffer_size,
         })
+    }
+
+    #[inline(always)]
+    pub fn setup_collection_config(&mut self, collection_config: CollectionConfig) {
+        self.collection_config = Some(collection_config)
     }
 }
 
@@ -235,9 +267,14 @@ impl MetadataArgsHash {
     /// Creates new MetadataArgsHash object
     pub fn new(leaf_schema: &LeafSchema, tree: &Pubkey, metadata_args: &MetadataArgs) -> Self {
         match leaf_schema {
-            LeafSchema::V1 { id: _, owner, delegate, nonce, data_hash: _, creator_hash: _ } => {
-                hash_metadata_args(*nonce, tree, owner, delegate, metadata_args)
-            }
+            LeafSchema::V1 {
+                id: _,
+                owner,
+                delegate,
+                nonce,
+                data_hash: _,
+                creator_hash: _,
+            } => hash_metadata_args(*nonce, tree, owner, delegate, metadata_args),
         }
     }
 
@@ -250,7 +287,7 @@ impl MetadataArgsHash {
 
     /// It takes raw message which were built by `get_message()` method and
     /// takes from there asset's nonce.
-    /// 
+    ///
     /// ## Arguments
     /// `message` - should be a message returned by `get_message()` method
     pub fn get_nonce_from_message(message: Vec<u8>) -> u64 {
@@ -440,22 +477,20 @@ mod test {
     fn test_metadata_arg_hash() {
         let nonce = 1;
 
-        let leaf_schema = LeafSchema::V1{
+        let leaf_schema = LeafSchema::V1 {
             id: Pubkey::from_str("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM").unwrap(),
             owner: Pubkey::from_str("1111111ogCyDbaRMvkdsHB3qfdyFYaG1WtRUAfdh").unwrap(),
             delegate: Pubkey::from_str("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3").unwrap(),
             nonce,
-            data_hash: [1;32],
-            creator_hash: [2;32],
+            data_hash: [1; 32],
+            creator_hash: [2; 32],
         };
 
-        let asset_creators = vec![
-            Creator{
-                address: Pubkey::from_str("11111112cMQwSC9qirWGjZM6gLGwW69X22mqwLLGP").unwrap(),
-                verified: true,
-                share: 100,
-            },
-        ];
+        let asset_creators = vec![Creator {
+            address: Pubkey::from_str("11111112cMQwSC9qirWGjZM6gLGwW69X22mqwLLGP").unwrap(),
+            verified: true,
+            share: 100,
+        }];
 
         let metadata_args = test_metadata_args(1u8, asset_creators.clone());
 
@@ -465,7 +500,10 @@ mod test {
 
         let message = metadata_arg_hash.get_message();
 
-        let expected_message = vec![0, 0, 0, 0, 0, 0, 0, 1, 17, 158, 254, 9, 216, 30, 3, 175, 4, 90, 233, 26, 187, 181, 229, 17, 178, 64, 206, 55, 154, 174, 38, 135, 44, 250, 225, 237, 8, 147, 1, 72];
+        let expected_message = vec![
+            0, 0, 0, 0, 0, 0, 0, 1, 17, 158, 254, 9, 216, 30, 3, 175, 4, 90, 233, 26, 187, 181, 229, 17, 178, 64, 206,
+            55, 154, 174, 38, 135, 44, 250, 225, 237, 8, 147, 1, 72,
+        ];
 
         assert_eq!(message, expected_message);
 
@@ -482,13 +520,11 @@ mod test {
 
         let creator_key = Keypair::new();
 
-        let asset_creators = vec![
-            Creator{
-                address: creator_key.pubkey(),
-                verified: true,
-                share: 100,
-            },
-        ];
+        let asset_creators = vec![Creator {
+            address: creator_key.pubkey(),
+            verified: true,
+            share: 100,
+        }];
 
         let metadata_args = test_metadata_args(1u8, asset_creators.clone());
 
@@ -499,14 +535,12 @@ mod test {
         // we cannot build rollup with set creator.verified=true but without signatures
         match rollup_builder.build_rollup() {
             Ok(_) => panic!("Action should fail"),
-            Err(err) => {
-                match err {
-                    RollupError::MissedSignaturesForAsset(key) => {
-                        assert_eq!(key, metadata_arg_hash.get_asset_id().to_string());
-                    }
-                    _ => panic!("Method returned wrong error"),
+            Err(err) => match err {
+                RollupError::MissedSignaturesForAsset(key) => {
+                    assert_eq!(key, metadata_arg_hash.get_asset_id().to_string());
                 }
-            }
+                _ => panic!("Method returned wrong error"),
+            },
         }
 
         let signature = creator_key.sign_message(&metadata_arg_hash.get_message());
@@ -517,7 +551,9 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_arg_hash.get_nonce(), creators_signatures);
 
-        rollup_builder.add_signatures_for_verified_creators(message_and_signatures).unwrap();
+        rollup_builder
+            .add_signatures_for_verified_creators(message_and_signatures)
+            .unwrap();
 
         // once we add missed signature we can build the rollup
         rollup_builder.build_rollup().unwrap();
@@ -527,7 +563,7 @@ mod test {
         let metadata_args_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         // sign wrong message
-        let signature = creator_key.sign_message([1;32].as_ref());
+        let signature = creator_key.sign_message([1; 32].as_ref());
 
         let mut creators_signatures = HashMap::new();
         creators_signatures.insert(creator_key.pubkey(), signature);
@@ -537,14 +573,12 @@ mod test {
 
         match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
-            Err(err) => {
-                match err {
-                    RollupError::InvalidCreatorsSignature(key) => {
-                        assert_eq!(key, creator_key.pubkey().to_string());
-                    }
-                    _ => panic!("Method returned wrong error"),
+            Err(err) => match err {
+                RollupError::InvalidCreatorsSignature(key) => {
+                    assert_eq!(key, creator_key.pubkey().to_string());
                 }
-            }
+                _ => panic!("Method returned wrong error"),
+            },
         }
 
         let malicious_creator = Keypair::new();
@@ -560,21 +594,17 @@ mod test {
 
         match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
-            Err(err) => {
-                match err {
-                    RollupError::ExtraCreatorsReceived => {}
-                    _ => panic!("Method returned wrong error"),
-                }
-            }
+            Err(err) => match err {
+                RollupError::ExtraCreatorsReceived => {}
+                _ => panic!("Method returned wrong error"),
+            },
         }
 
-        let asset_creators = vec![
-            Creator{
-                address: creator_key.pubkey(),
-                verified: false,
-                share: 100,
-            },
-        ];
+        let asset_creators = vec![Creator {
+            address: creator_key.pubkey(),
+            verified: false,
+            share: 100,
+        }];
 
         let metadata_args = test_metadata_args(3u8, asset_creators);
 
@@ -591,14 +621,12 @@ mod test {
         // we cannot add signature for asset with unverified creator
         match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
-            Err(err) => {
-                match err {
-                    RollupError::CannotAddSignatureForUnverifiedCreator(key) => {
-                        assert_eq!(key, creator_key.pubkey().to_string());
-                    }
-                    _ => panic!("Method returned wrong error"),
+            Err(err) => match err {
+                RollupError::CannotAddSignatureForUnverifiedCreator(key) => {
+                    assert_eq!(key, creator_key.pubkey().to_string());
                 }
-            }
+                _ => panic!("Method returned wrong error"),
+            },
         }
     }
 
@@ -612,12 +640,12 @@ mod test {
         let creator_key_2 = Keypair::new();
 
         let asset_creators = vec![
-            Creator{
+            Creator {
                 address: creator_key_1.pubkey(),
                 verified: true,
                 share: 50,
             },
-            Creator{
+            Creator {
                 address: creator_key_2.pubkey(),
                 verified: true,
                 share: 50,
@@ -627,7 +655,7 @@ mod test {
         let mut rollup_builder = RollupBuilder::new(tree_account, 5, 8, 4).unwrap();
 
         let metadata_args = test_metadata_args(1u8, asset_creators.clone());
-        
+
         let metadata_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         let mut creators_signatures = HashMap::new();
@@ -641,18 +669,20 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_hash.get_nonce(), creators_signatures);
 
-        rollup_builder.add_signatures_for_verified_creators(message_and_signatures).unwrap();
+        rollup_builder
+            .add_signatures_for_verified_creators(message_and_signatures)
+            .unwrap();
 
         // successful scenario - two creators are verified
         let _ = rollup_builder.build_rollup().unwrap();
 
         let asset_creators = vec![
-            Creator{
+            Creator {
                 address: creator_key_1.pubkey(),
                 verified: true,
                 share: 50,
             },
-            Creator{
+            Creator {
                 address: creator_key_2.pubkey(),
                 verified: false,
                 share: 50,
@@ -671,18 +701,20 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_hash.get_nonce(), creators_signatures);
 
-        rollup_builder.add_signatures_for_verified_creators(message_and_signatures).unwrap();
+        rollup_builder
+            .add_signatures_for_verified_creators(message_and_signatures)
+            .unwrap();
 
         // successful scenario - only one of creators is verified
         let _ = rollup_builder.build_rollup().unwrap();
 
         let asset_creators = vec![
-            Creator{
+            Creator {
                 address: creator_key_1.pubkey(),
                 verified: true,
                 share: 50,
             },
-            Creator{
+            Creator {
                 address: creator_key_2.pubkey(),
                 verified: true,
                 share: 50,
@@ -708,12 +740,10 @@ mod test {
 
         match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
-            Err(err) => {
-                match err {
-                    RollupError::ExtraCreatorsReceived => {}
-                    _ => panic!("Method returned wrong error"),
-                }
-            }
+            Err(err) => match err {
+                RollupError::ExtraCreatorsReceived => {}
+                _ => panic!("Method returned wrong error"),
+            },
         }
     }
 
