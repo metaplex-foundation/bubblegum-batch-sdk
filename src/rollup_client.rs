@@ -36,8 +36,6 @@ const CANOPY_NODES_PER_TX: usize = 24;
 /// It allows to:
 /// 1) Create a merkle tree account for a rollup
 /// 2) Add assets (NFT) to the rollup off-chain
-/// 3) Push the rollup to a SOlana account in a form of bubblegum tree
-///
 /// 3) Push the rollup to a Solana account in a form of a bubblegum tree
 ///
 /// TODO: add link to rollup documentation page.

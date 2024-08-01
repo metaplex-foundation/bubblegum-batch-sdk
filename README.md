@@ -31,6 +31,7 @@ This section demonstrates the complete flow of rollup creation.
 ⚠️ To be able to create a rollup, you need to have a stake in MPLX tokens.
 TODO: add link to staking page.
 
+Example of batch minting:
 ```rust
 use rollup_sdk::rollup_client::RollupClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -65,18 +66,8 @@ let sign = rollup_client.prepare_tree(
     4   // canopy tree depth
 ).awailt()?;
 
-let mut rollup_builder = rollup_client.create_rollup_builder(&tree_data_account.pubkey())
+let rollup_builder = rollup_client.create_rollup_builder(&tree_data_account.pubkey())
     .await?;
-
-// Setup collection config if you want to add assets with verified collection (optional step)
-let collection_authority = todo!("keypair for collection authority");
-rollup_builder.setup_collection_config(CollectionConfig {
-    collection_authority,
-    collection_authority_record_pda: None,
-    collection_mint: todo!("add collection pubkey"),
-    collection_metadata: todo!("add collection metadata pubkey"),
-    edition_account: todo!("add collection edition account pubkey"),
-});
 
 // Adding NTF asset
 let assets_to_add: &[(MetadataArgs, Pubkey, Pubkey)] = todo!("load/prepare");
@@ -137,6 +128,23 @@ and become ready to validate changes to the tree.
 Compressed NFTs (merkle trees) that are created using the rollup flow,
 are fully compatible with all [Metaplex Bubblegum](https://developers.metaplex.com/bubblegum)
 instructions.
+
+Also if you want some asset have collection verified, tou can add collection config
+```rust
+let mut rollup_builder = rollup_client.create_rollup_builder(&tree_data_account.pubkey())
+    .await?;
+
+// Setup collection config if you want to add assets with verified collection
+let collection_authority = todo!("keypair for collection authority");
+rollup_builder.setup_collection_config(CollectionConfig {
+    collection_authority,
+    collection_authority_record_pda: None,
+    collection_mint: todo!("add collection pubkey"),
+    collection_metadata: todo!("add collection metadata pubkey"),
+    edition_account: todo!("add collection edition account pubkey"),
+});
+```
+All other steps are the same as regular batch mint
 
 ## Splitting the rollup creation in time
 
