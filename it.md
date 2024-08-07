@@ -54,4 +54,4 @@ error[E0308]: mismatched types
 
 make sure that your `Cargo.lock` has only one solana-program version and it's **1.18.xx**. In other words drop manually from `.lock` file solana-program with version != 1.18.xx.
 
-This problem is happening when cargo loads different solana program versions, for example 1.18.21 and 2.0.4, wee need to stick to 1.18.xx.
+This problem is happening when cargo loads different solana program versions, for example 1.18.21 and 2.0.4, we need to stick to 1.18.xx.
