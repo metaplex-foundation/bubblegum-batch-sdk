@@ -19,7 +19,7 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 pub struct BatchMint {
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub tree_id: Pubkey,
-    pub rolled_mints: Vec<RolledMintInstruction>,
+    pub batch_mints: Vec<BatchMintInstruction>,
     pub raw_metadata_map: HashMap<String, Box<RawValue>>, // URL of metadata -> JSON text
     pub max_depth: u32,
     pub max_buffer_size: u32,
@@ -44,7 +44,7 @@ impl BatchMint {
 impl PartialEq for BatchMint {
     fn eq(&self, other: &Self) -> bool {
         self.tree_id == other.tree_id
-            && self.rolled_mints == other.rolled_mints
+            && self.batch_mints == other.batch_mints
             && self.max_depth == other.max_depth
             && self.max_buffer_size == other.max_buffer_size
             && self.merkle_root == other.merkle_root
@@ -53,29 +53,16 @@ impl PartialEq for BatchMint {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct RolledMintInstruction {
+pub struct BatchMintInstruction {
     pub tree_update: ChangeLogEventV1, // validate // derive from nonce
     pub leaf_update: LeafSchema,       // validate
     pub mint_args: MetadataArgs,
     // V0.1: enforce collection.verify == false
     // V0.1: enforce creator.verify == false
-    // V0.2: add pub collection_signature: Option<Signature> - sign asset_id with collection authority
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub authority: Pubkey,
     #[serde(with = "serde_with::As::<Option<HashMap<DisplayFromStr, DisplayFromStr>>>")]
     pub creator_signature: Option<HashMap<Pubkey, Signature>>, // signatures of the asset with the creator pubkey to ensure verified creator
-}
-
-#[derive(Default, Clone)]
-pub struct BatchMintInstruction {
-    pub max_depth: u32,
-    pub max_buffer_size: u32,
-    pub num_minted: u64,
-    pub root: [u8; 32],
-    pub leaf: [u8; 32],
-    pub index: u32,
-    pub metadata_url: String,
-    pub file_checksum: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

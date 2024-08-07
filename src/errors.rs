@@ -22,8 +22,8 @@ pub enum BatchMintError {
     NestedErr(Box<dyn std::error::Error>),
     #[error("Failed signature verification for creator: {0}")]
     InvalidCreatorsSignature(String),
-    #[error("Missing rolled mint with ID: {0}")]
-    MissingRolledMint(u64),
+    #[error("Missing batch mint with ID: {0}")]
+    MissingBatchMint(u64),
     #[error("Extra creators were passed for verification")]
     ExtraCreatorsReceived,
     #[error("Missed signatures for asset: {0}")]

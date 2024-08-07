@@ -20,7 +20,7 @@ use crate::errors::BatchMintError;
 use crate::merkle_tree_wrapper::{
     calc_merkle_tree_size, calc_tree_data_account_size, restore_canopy_depth_from_buffer,
 };
-use crate::model::{BatchMint, RolledMintInstruction};
+use crate::model::{BatchMint, BatchMintInstruction};
 use crate::pubkey_util;
 use crate::tree_data_acc::TreeDataInfo;
 
@@ -154,14 +154,14 @@ impl BatchMintClient {
         let mut batch_mint_builder =
             BatchMintBuilder::new(batch_mint.tree_id, max_depth, max_buffer_size, canopy_depth)?;
 
-        for rolled_mint in &batch_mint.rolled_mints {
-            let RolledMintInstruction {
+        for batch_mint in &batch_mint.batch_mints {
+            let BatchMintInstruction {
                 tree_update: _,
                 leaf_update,
                 mint_args,
                 authority: _,
                 creator_signature,
-            } = rolled_mint;
+            } = batch_mint;
             let LeafSchema::V1 {
                 id: _,
                 owner,
@@ -235,7 +235,7 @@ impl BatchMintClient {
         }
 
         batch_mint_builder.build_batch_mint()?; // TODO: maybe we don't need it
-        // We're just using remaining_accounts to send proofs because they are of the same type
+                                                // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = batch_mint_builder
             .merkle
             .get_rightmost_proof()
@@ -301,7 +301,7 @@ impl BatchMintClient {
                 ))
                 .root(batch_mint.merkle_root)
                 .rightmost_leaf(batch_mint.last_leaf_hash)
-                .rightmost_index((batch_mint.rolled_mints.len() as u32).saturating_sub(1))
+                .rightmost_index((batch_mint.batch_mints.len() as u32).saturating_sub(1))
                 .metadata_url(metadata_url.to_string())
                 .metadata_hash(metadata_hash.to_string())
                 .add_remaining_accounts(remaining_accounts)
@@ -328,7 +328,7 @@ impl BatchMintClient {
             ))
             .root(batch_mint.merkle_root)
             .rightmost_leaf(batch_mint.last_leaf_hash)
-            .rightmost_index((batch_mint.rolled_mints.len() as u32).saturating_sub(1))
+            .rightmost_index((batch_mint.batch_mints.len() as u32).saturating_sub(1))
             .metadata_url(metadata_url.to_string())
             .metadata_hash(metadata_hash.to_string())
             .add_remaining_accounts(remaining_accounts)

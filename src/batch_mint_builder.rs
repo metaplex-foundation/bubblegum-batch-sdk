@@ -8,7 +8,7 @@ use solana_sdk::signature::Signature;
 use crate::errors::BatchMintError;
 use crate::merkle_tree_wrapper::{make_concurrent_merkle_tree, IChangeLog, ITree};
 
-use crate::model::{BatchMint, ChangeLogEventV1, RolledMintInstruction, CollectionConfig};
+use crate::model::{BatchMint, BatchMintInstruction, ChangeLogEventV1, CollectionConfig};
 
 use solana_sdk::keccak;
 use solana_sdk::pubkey::Pubkey;
@@ -33,8 +33,8 @@ pub struct BatchMintBuilder {
     pub canopy_depth: u32,
     /// encapsulates [ConcurrentMerkleTree]
     pub merkle: Box<dyn ITree>,
-    /// See [BatchMint::rolled_mints]
-    pub mints: BTreeMap<u64, RolledMintInstruction>,
+    /// See [BatchMint::batch_mints]
+    pub mints: BTreeMap<u64, BatchMintInstruction>,
     /// See [BatchMint::last_leaf_hash]
     pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
@@ -111,7 +111,7 @@ impl BatchMintBuilder {
             }
         }
 
-        let rolled_mint = RolledMintInstruction {
+        let batch_mint = BatchMintInstruction {
             tree_update: ChangeLogEventV1 {
                 id: self.tree_account.clone(),
                 path: path.into_iter().map(Into::into).collect::<Vec<_>>(),
@@ -130,7 +130,7 @@ impl BatchMintBuilder {
             authority: owner.clone(),
             creator_signature: None,
         };
-        self.mints.insert(nonce, rolled_mint);
+        self.mints.insert(nonce, batch_mint);
 
         Ok(metadata_args_hash)
     }
@@ -152,16 +152,16 @@ impl BatchMintBuilder {
                 continue;
             }
 
-            if let Some(rolled_mint) = self.mints.get_mut(&asset_nonce) {
-                Self::check_extra_creators(&rolled_mint.mint_args.creators, &creator_signature)?;
+            if let Some(batch_mint) = self.mints.get_mut(&asset_nonce) {
+                Self::check_extra_creators(&batch_mint.mint_args.creators, &creator_signature)?;
 
-                let mut rolled_signatures = rolled_mint.creator_signature.clone().unwrap_or_default();
+                let mut batch_mint_signatures = batch_mint.creator_signature.clone().unwrap_or_default();
 
                 let metadata_hash =
-                    MetadataArgsHash::new(&rolled_mint.leaf_update, &self.tree_account, &rolled_mint.mint_args);
+                    MetadataArgsHash::new(&batch_mint.leaf_update, &self.tree_account, &batch_mint.mint_args);
                 let signed_message = metadata_hash.get_message();
 
-                for creator in rolled_mint.mint_args.creators.iter_mut() {
+                for creator in batch_mint.mint_args.creators.iter_mut() {
                     if let Some(signature) = creator_signature.get(&creator.address) {
                         if !creator.verified {
                             return Err(BatchMintError::CannotAddSignatureForUnverifiedCreator(
@@ -173,13 +173,13 @@ impl BatchMintBuilder {
                             return Err(BatchMintError::InvalidCreatorsSignature(creator.address.to_string()));
                         }
 
-                        rolled_signatures.insert(creator.address, *signature);
+                        batch_mint_signatures.insert(creator.address, *signature);
                     }
                 }
 
-                rolled_mint.creator_signature = Some(rolled_signatures);
+                batch_mint.creator_signature = Some(batch_mint_signatures);
             } else {
-                return Err(BatchMintError::MissingRolledMint(asset_nonce));
+                return Err(BatchMintError::MissingBatchMint(asset_nonce));
             }
         }
 
@@ -203,21 +203,21 @@ impl BatchMintBuilder {
 
     pub fn build_batch_mint(&self) -> std::result::Result<BatchMint, BatchMintError> {
         // make sure user did not miss any creator's signature
-        for (_, rolled_mint) in &self.mints {
-            for creator in &rolled_mint.mint_args.creators {
+        for (_, batch_mint) in &self.mints {
+            for creator in &batch_mint.mint_args.creators {
                 if creator.verified {
-                    if let Some(creator_signatures) = &rolled_mint.creator_signature {
+                    if let Some(creator_signatures) = &batch_mint.creator_signature {
                         if !creator_signatures.contains_key(&creator.address) {
                             return Err(BatchMintError::MissedSignatureFromCreator(creator.address.to_string()));
                         }
                     } else {
                         return Err(BatchMintError::MissedSignaturesForAsset(
-                            rolled_mint.leaf_update.id().to_string(),
+                            batch_mint.leaf_update.id().to_string(),
                         ));
                     }
                 }
             }
-            if let Some(ref collection) = rolled_mint.mint_args.collection {
+            if let Some(ref collection) = batch_mint.mint_args.collection {
                 if !collection.verified {
                     continue;
                 }
@@ -236,7 +236,7 @@ impl BatchMintBuilder {
             tree_id: self.tree_account,
             raw_metadata_map: HashMap::new(), // TODO: fill? this may be provided by the client for every asset, maybe in add_asset as an optional parameter
             max_depth: self.max_depth,
-            rolled_mints: self.mints.values().cloned().collect(), // TODO: maybe it's better to move out mints not clone all of it
+            batch_mints: self.mints.values().cloned().collect(), // TODO: maybe it's better to move out mints not clone all of it
             merkle_root: self.merkle.get_root(),
             last_leaf_hash: self.last_leaf_hash,
             max_buffer_size: self.max_buffer_size,

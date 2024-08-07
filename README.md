@@ -38,7 +38,7 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::signer::keypair::Keypair;
 use mpl_bubblegum::types::MetadataArgs;
 use std::sync::Arc;
-use rollup_sdk::model::CollectionConfig;
+use batch_sdk::model::CollectionConfig;
 use std::time::Duration;
 
 let payer: Keypair = todo!("the one who pays for the batch mint");
