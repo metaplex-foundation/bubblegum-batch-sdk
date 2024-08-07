@@ -3,7 +3,7 @@ use solana_sdk::pubkey::ParsePubkeyError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum RollupError {
+pub enum BatchMintError {
     #[error("Solana client error: {0}")]
     SolanaClientErr(#[from] solana_rpc_client_api::client_error::Error),
     #[error("Merkle tree bytes parsing error: {0}")]

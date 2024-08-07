@@ -5,17 +5,17 @@ use std::{
 
 use mpl_bubblegum::types::{LeafSchema, MetadataArgs};
 use serde::{Deserialize, Serialize};
-use serde_with::DisplayFromStr;
 use serde_json::value::RawValue;
+use serde_with::DisplayFromStr;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
 /// an immutable storage, and picked up by DAS validatiors, that verify the correctness
-/// of a rollup.
-/// This type is used only for providing the rollup data to DAS validators,
-/// all the off-chain rollup changes should be done via RollupBuilder.
+/// of a batch mint.
+/// This type is used only for providing the batch mint data to DAS validators,
+/// all the off-chain batch mint changes should be done via BatchMintBuilder.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Rollup {
+pub struct BatchMint {
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub tree_id: Pubkey,
     pub rolled_mints: Vec<RolledMintInstruction>,
@@ -28,19 +28,19 @@ pub struct Rollup {
     pub last_leaf_hash: [u8; 32], // validate
 }
 
-impl Rollup {
-    /// Serializes the rollup object into given destination.
+impl BatchMint {
+    /// Serializes the batch mint object into given destination.
     pub fn write_as_json(&self, writer: &mut dyn Write) -> serde_json::error::Result<()> {
         serde_json::to_writer(writer, self)
     }
 
-    pub fn read_as_json(reader: impl Read) -> serde_json::error::Result<Rollup> {
-        let rollup = serde_json::from_reader(reader)?;
-        Ok(rollup)
+    pub fn read_as_json(reader: impl Read) -> serde_json::error::Result<BatchMint> {
+        let batch_mint = serde_json::from_reader(reader)?;
+        Ok(batch_mint)
     }
 }
 
-impl PartialEq for Rollup {
+impl PartialEq for BatchMint {
     fn eq(&self, other: &Self) -> bool {
         self.tree_id == other.tree_id
             && self.rolled_mints == other.rolled_mints

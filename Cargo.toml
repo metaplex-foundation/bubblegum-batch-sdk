@@ -1,18 +1,18 @@
 [package]
-name = "rollup-sdk"
+name = "batch-sdk"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 async-trait = "0.1.80"
 paste = "1"
-thiserror = "1"
+thiserror = "^1.0.63"
 
 uuid = { version = "1.6" }
 sha2 = "0.10"
 chrono = "^0.4"
 bytemuck = "1.13"
-borsh = "1"
+borsh = ">= 0.9, < 1.0"
 
 serde = {version = "1"}
 serde_derive = "1"
@@ -20,17 +20,17 @@ serde_json = { version = "1", features = ["raw_value"] }
 serde_with = "3.7"
 anchor-lang = "0.29.0"
 
-solana-sdk = "~1.18"
-solana-program = "~1.18"
-solana-client = "~1.18"
-solana-rpc-client-api = "~1.18"
+solana-sdk = "~1.18.11"
+solana-program = "~1.18.11"
+solana-client = "~1.18.11"
+solana-rpc-client-api = "~1.18.11"
 
-bubblegum = { path = "../blockbuster/mpl-bubblegum/programs/bubblegum/program"}
-mpl-bubblegum = { path = "../blockbuster/mpl-bubblegum/clients/rust", features = ["serde"]}
-spl-account-compression = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root", features = ["no-entrypoint", "cpi"] }
+bubblegum = { git = "https://github.com/adm-metaex/mpl-bubblegum.git", branch = "feature/cleanup", features = ["no-entrypoint"] }
+mpl-bubblegum = { git = "https://github.com/adm-metaex/mpl-bubblegum.git", branch = "feature/cleanup", features = ["serde"] }
+spl-account-compression = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root", features = ["no-entrypoint"] }
 spl-concurrent-merkle-tree = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root", default-features = false }
 spl-merkle-tree-reference = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root" }
-spl-noop = "0.2.0"
+spl-noop = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root" }
 mplx-staking-states = { git = "https://github.com/adm-metaex/mplx-staking.git" }
 
 [dev-dependencies]

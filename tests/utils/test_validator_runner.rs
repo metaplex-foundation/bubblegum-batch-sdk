@@ -13,7 +13,7 @@ const PROGRAM_NAME: &'static str = "solana-test-validator";
 const ENV_SOLANA_HOME: &'static str = "SOLANA_HOME";
 
 /// Wrapper for `solana-test-validator` that comes with the distribution of solana.
-/// We use `solana-test-validator` for the rollup testing, because it
+/// We use `solana-test-validator` for the batch mint testing, because it
 /// it is much more stable than the BankClient.
 ///
 /// This wrapper allow to launch `solana-test-validator` as separate process,

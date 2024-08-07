@@ -4,7 +4,7 @@ use spl_account_compression::{ConcurrentMerkleTree, ConcurrentMerkleTreeError, N
 
 use spl_concurrent_merkle_tree::changelog::ChangeLog;
 
-use crate::errors::RollupError;
+use crate::errors::BatchMintError;
 
 /// Interface that abstracts over [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
 /// regardless const generic parameters.
@@ -180,7 +180,7 @@ make_tree_creator_funcs!(
     (30, 2048)
 );
 
-pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<Box<dyn ITree>, RollupError> {
+pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<Box<dyn ITree>, BatchMintError> {
     // Note: We do not create ConcurrentMerkleTree<A,B> object right inside of match statement
     // because of how Rust compiler reserves space for functions:
     // the total size of function in memory (i.e. frame size) is as big as total size of
@@ -228,7 +228,7 @@ pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<
         (30, 512) => Ok(make_concurrent_merkle_tree_30_512()),
         (30, 1024) => Ok(make_concurrent_merkle_tree_30_1024()),
         (30, 2048) => Ok(make_concurrent_merkle_tree_30_2048()),
-        (d, s) => Err(RollupError::UnexpectedTreeSize(d, s)),
+        (d, s) => Err(BatchMintError::UnexpectedTreeSize(d, s)),
     }
 }
 
@@ -294,11 +294,11 @@ pub fn calc_canopy_size(canopy_depth: u32) -> usize {
 /// 1) The header of tree data account
 /// 2) Body of [ConcurrentMerkleTree] of the given size
 /// 3) Buffer for canopy leaf nodes, if the canopy usage is switched on
-/// 
+///
 /// Reminder: canopy - is the upper part of the merkle tree not including the root.
 /// (how much of tree layers it includes is defined by the canopy depth argument).
 /// It is used to be able to transfer all required proofs for trees with depth greater than 17.
-/// 
+///
 /// Args:
 /// * `max_depth` - merkle tree depth
 /// * `max_buffer_size` - size of the buffer for concurrent changes
