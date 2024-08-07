@@ -4,7 +4,7 @@
 use std::mem::size_of;
 
 use crate::{
-    errors::RollupError,
+    errors::BatchMintError,
     merkle_tree_wrapper::{calc_merkle_tree_size, restore_canopy_depth_from_buffer},
 };
 use mpl_bubblegum::{accounts::MerkleTree, types::ConcurrentMerkleTreeHeaderData};
@@ -26,7 +26,7 @@ impl<'a> TreeDataInfo<'a> {
     ///
     /// ## Arguments:
     /// * `bytes` - raw bytes received as `solana_client.get_account(pubkey).unwrap().data()`
-    pub fn from_bytes(bytes: &'a [u8]) -> std::result::Result<TreeDataInfo, RollupError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> std::result::Result<TreeDataInfo, BatchMintError> {
         let merkle_tree = MerkleTree::from_bytes(bytes)?;
         let (max_depth, max_buffer_size) = match merkle_tree.tree_header {
             ConcurrentMerkleTreeHeaderData::V1 {
@@ -40,7 +40,7 @@ impl<'a> TreeDataInfo<'a> {
 
         // Calculate the size of the merkle tree without the canopy. This will define the offset of the canopy buffer.
         let merkel_tree_size = calc_merkle_tree_size(max_depth, max_buffer_size, 0)
-            .ok_or(RollupError::UnexpectedTreeSize(max_depth, max_buffer_size))?;
+            .ok_or(BatchMintError::UnexpectedTreeSize(max_depth, max_buffer_size))?;
 
         let (_header, rest) = bytes.split_at(CONCURRENT_MERKLE_TREE_HEADER_SIZE_V1);
         let (_tree_body, canopy_buffer) = rest.split_at(merkel_tree_size);
@@ -59,7 +59,7 @@ impl<'a> TreeDataInfo<'a> {
 
     /// Returns a sequence of non-empy canopy leaf nodes that previously had been added
     /// using `add_canopy` bubblegum instruction.
-    pub fn non_empty_canopy_leaves(&self) -> std::result::Result<Vec<&'a Node>, RollupError> {
+    pub fn non_empty_canopy_leaves(&self) -> std::result::Result<Vec<&'a Node>, BatchMintError> {
         let node_size = size_of::<Node>();
         let leaves_start_position = self.canopy_buffer.len() - (1 << self.canopy_depth) * node_size;
         let leaves_buffer = &self.canopy_buffer[leaves_start_position..];
@@ -73,7 +73,7 @@ impl<'a> TreeDataInfo<'a> {
                     }
                     canopy_leaves.push(canopy_leaf);
                 }
-                Err(_) => return Err(RollupError::CanopyCoercionErr),
+                Err(_) => return Err(BatchMintError::CanopyCoercionErr),
             }
         }
         Ok(canopy_leaves)

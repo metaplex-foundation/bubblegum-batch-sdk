@@ -3,7 +3,7 @@ use solana_sdk::pubkey::ParsePubkeyError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum RollupError {
+pub enum BatchMintError {
     #[error("Solana client error: {0}")]
     SolanaClientErr(#[from] solana_rpc_client_api::client_error::Error),
     #[error("Merkle tree bytes parsing error: {0}")]
@@ -22,8 +22,8 @@ pub enum RollupError {
     NestedErr(Box<dyn std::error::Error>),
     #[error("Failed signature verification for creator: {0}")]
     InvalidCreatorsSignature(String),
-    #[error("Missing rolled mint with ID: {0}")]
-    MissingRolledMint(u64),
+    #[error("Missing batch mint with ID: {0}")]
+    MissingBatchMint(u64),
     #[error("Extra creators were passed for verification")]
     ExtraCreatorsReceived,
     #[error("Missed signatures for asset: {0}")]

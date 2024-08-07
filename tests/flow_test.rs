@@ -1,13 +1,12 @@
 mod utils;
 
-use bubblegum::state::{REALM, REALM_GOVERNING_MINT};
+use bubblegum::state::{REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
+use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
+use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
 use mpl_bubblegum::types::MetadataArgs;
 use mplx_staking_states::state::{
     DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR,
-    VOTER_DISCRIMINATOR,
 };
-use rollup_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
-use rollup_sdk::rollup_client::RollupClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{account::AccountSharedData, pubkey::Pubkey, signature::Keypair, signer::Signer};
 use spl_account_compression::ConcurrentMerkleTree;
@@ -41,18 +40,18 @@ const TEST_PAYER: &[u8] = &[
 #[tokio::test]
 #[cfg(not(any(skip_integration_tests)))]
 #[serial_test::serial]
-async fn test_complete_rollup_flow() {
+async fn test_complete_batch_mint_flow() {
     // Prepare env
     let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8899).await;
 
     // Starting testing
-    let rollup_client = RollupClient::new(solana_client.clone());
+    let batch_mint_client = BatchMintClient::new(solana_client.clone());
 
     const DEPTH: usize = 10;
     const BUFFER: usize = 32;
     const CANOPY: u32 = 3;
 
-    let _sig_1 = rollup_client
+    let _sig_1 = batch_mint_client
         .prepare_tree(
             &payer,
             &tree_creator,
@@ -64,25 +63,25 @@ async fn test_complete_rollup_flow() {
         .await
         .unwrap();
 
-    let mut rollup_builder = rollup_client
-        .create_rollup_builder(&tree_data_account.pubkey())
+    let mut batch_mint_builder = batch_mint_client
+        .create_batch_mint_builder(&tree_data_account.pubkey())
         .await
         .unwrap();
     println!(
-        "Rollup builder size: {}, {}, {}",
-        rollup_builder.max_depth, rollup_builder.max_buffer_size, rollup_builder.canopy_depth
+        "BatchMint builder size: {}, {}, {}",
+        batch_mint_builder.max_depth, batch_mint_builder.max_buffer_size, batch_mint_builder.canopy_depth
     );
 
-    rollup_builder
+    batch_mint_builder
         .add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(1u8))
         .unwrap();
 
-    let _sig_2 = rollup_client
+    let _sig_2 = batch_mint_client
         .finalize_tree(
             &payer,
             "http://mymetadata.ololo/",
             "mymetadatahash",
-            &rollup_builder,
+            &batch_mint_builder,
             &tree_creator,
             &payer,
         )
@@ -91,9 +90,9 @@ async fn test_complete_rollup_flow() {
 
     // Verification:
     // After FinilizeTreeWithRoot is executed, the offline ConcurrentMerkleTree
-    // which is encapsulated by the rollup, should be reflected in solana tree data account.
+    // which is encapsulated by the batch mint, should be reflected in solana tree data account.
     // And the canopy bytes (if canopy had been set), should be cleared,
-    // because the canopy is only needed to reflect the merkle tree from rollup.
+    // because the canopy is only needed to reflect the merkle tree from batch mint.
     let account_raw_bytes = solana_client
         .get_account_data(&tree_data_account.pubkey())
         .await
@@ -106,7 +105,7 @@ async fn test_complete_rollup_flow() {
     // Comparing offchain merkle tree with the one created by finilize_tree
     unsafe {
         let (orig_tree_ptr, _vtable_ptr): (*const u8, *const u8) =
-            std::mem::transmute(Box::into_raw(rollup_builder.merkle));
+            std::mem::transmute(Box::into_raw(batch_mint_builder.merkle));
         let original: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(orig_tree_ptr);
 
         let acc_tree_ptr = account_raw_bytes.as_ptr().add(header_size);
@@ -134,13 +133,13 @@ async fn test_half_filled_assets() {
     let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8909).await;
 
     // Starting testing
-    let rollup_client = RollupClient::new(solana_client.clone());
+    let batch_mint_client = BatchMintClient::new(solana_client.clone());
 
     const DEPTH: usize = 5;
     const BUFFER: usize = 8;
     const CANOPY: u32 = 3;
 
-    let _sig_1 = rollup_client
+    let _sig_1 = batch_mint_client
         .prepare_tree(
             &payer,
             &tree_creator,
@@ -152,21 +151,21 @@ async fn test_half_filled_assets() {
         .await
         .unwrap();
 
-    let mut rollup_builder = rollup_client
-        .create_rollup_builder(&tree_data_account.pubkey())
+    let mut batch_mint_builder = batch_mint_client
+        .create_batch_mint_builder(&tree_data_account.pubkey())
         .await
         .unwrap();
 
     for i in 1u8..(((1 << DEPTH) / 2) + 2) {
-        rollup_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
+        batch_mint_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
     }
 
-    let _sig_2 = rollup_client
+    let _sig_2 = batch_mint_client
         .finalize_tree(
             &payer,
             "http://mymetadata.ololo/",
             "mymetadatahash",
-            &rollup_builder,
+            &batch_mint_builder,
             &tree_creator,
             &payer,
         )
@@ -185,13 +184,13 @@ async fn test_half_filled_assets() {
 
     unsafe {
         let (orig_tree_ptr, _vtable_ptr): (*const u8, *const u8) =
-            std::mem::transmute(Box::into_raw(rollup_builder.merkle));
+            std::mem::transmute(Box::into_raw(batch_mint_builder.merkle));
         let original: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(orig_tree_ptr);
 
         let acc_tree_ptr = account_raw_bytes.as_ptr().add(header_size);
         let created: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(acc_tree_ptr);
 
-        // Thought the rollup contains multiple assets, from the perspective of bubblegum merkle tree,
+        // Thought the batch mint contains multiple assets, from the perspective of bubblegum merkle tree,
         // it is only one node added
         assert_eq!(1, (*created).sequence_number);
         assert_eq!((*original).rightmost_proof, (*created).rightmost_proof);
@@ -218,19 +217,19 @@ async fn test_half_filled_assets() {
 async fn test_canopy_resume() {
     // Prepare env
 
+    use bubblegum_batch_sdk::pubkey_util;
     use mpl_bubblegum::instructions::AddCanopyBuilder;
-    use rollup_sdk::pubkey_util;
     use solana_sdk::{system_program, transaction::Transaction};
     let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8919).await;
 
     // Starting testing
-    let rollup_client = RollupClient::new(solana_client.clone());
+    let batch_mint_client = BatchMintClient::new(solana_client.clone());
 
     const DEPTH: usize = 5;
     const BUFFER: usize = 8;
     const CANOPY: u32 = 3;
 
-    let _sig_1 = rollup_client
+    let _sig_1 = batch_mint_client
         .prepare_tree(
             &payer,
             &tree_creator,
@@ -242,24 +241,26 @@ async fn test_canopy_resume() {
         .await
         .unwrap();
 
-    let mut rollup_builder = rollup_client
-        .create_rollup_builder(&tree_data_account.pubkey())
+    let mut batch_mint_builder = batch_mint_client
+        .create_batch_mint_builder(&tree_data_account.pubkey())
         .await
         .unwrap();
 
     for i in 1u8..(((1 << DEPTH) / 2) + 2) {
-        rollup_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
+        batch_mint_builder
+            .add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i))
+            .unwrap();
     }
 
     {
-        let tree_config_account = pubkey_util::derive_tree_config_account(&rollup_builder.tree_account);
+        let tree_config_account = pubkey_util::derive_tree_config_account(&batch_mint_builder.tree_account);
         // simulating adding of canopy
         let add_canopy_inst = AddCanopyBuilder::new()
             .tree_config(tree_config_account)
-            .merkle_tree(rollup_builder.tree_account)
+            .merkle_tree(batch_mint_builder.tree_account)
             .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
             .canopy_nodes(
-                rollup_builder
+                batch_mint_builder
                     .canopy_leaves
                     .iter()
                     .take(1)
@@ -280,12 +281,12 @@ async fn test_canopy_resume() {
         solana_client.send_and_confirm_transaction(&tx).await.unwrap();
     }
 
-    let _sig_2 = rollup_client
+    let _sig_2 = batch_mint_client
         .finalize_tree(
             &payer,
             "http://mymetadata.ololo/",
             "mymetadatahash",
-            &rollup_builder,
+            &batch_mint_builder,
             &tree_creator,
             &payer,
         )
@@ -304,13 +305,13 @@ async fn test_canopy_resume() {
 
     unsafe {
         let (orig_tree_ptr, _vtable_ptr): (*const u8, *const u8) =
-            std::mem::transmute(Box::into_raw(rollup_builder.merkle));
+            std::mem::transmute(Box::into_raw(batch_mint_builder.merkle));
         let original: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(orig_tree_ptr);
 
         let acc_tree_ptr = account_raw_bytes.as_ptr().add(header_size);
         let created: *const ConcurrentMerkleTree<DEPTH, BUFFER> = std::mem::transmute(acc_tree_ptr);
 
-        // Thought the rollup contains multiple assets, from the perspective of bubblegum merkle tree,
+        // Thought the batch mint contains multiple assets, from the perspective of bubblegum merkle tree,
         // it is only one node added
         assert_eq!(1, (*created).sequence_number);
         assert_eq!((*original).rightmost_proof, (*created).rightmost_proof);
@@ -398,7 +399,7 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
     )
 }
 
-/// FinalizeTreeWithRoot instruction, which is the final step for creating a rollup
+/// FinalizeTreeWithRoot instruction, which is the final step for creating a batch mint
 /// requires registrar and voter accounts that are not easy to create.
 /// That's why for the testing purposes we manually create these accounts,
 /// by pushing them directly to solana-test-validator.
@@ -441,11 +442,6 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
     let voting_mint_config = VotingMintConfig {
         mint: mplx_mint_key,
         grant_authority,
-        baseline_vote_weight_scaled_factor: 0,
-        max_extra_lockup_vote_weight_scaled_factor: 0,
-        lockup_saturation_secs: 0,
-        digit_shift: 0,
-        padding: [0, 0, 0, 0, 0, 0, 0],
     };
 
     let registrar = Registrar {
@@ -453,14 +449,10 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
         realm: REALM,
         realm_governing_token_mint: REALM_GOVERNING_MINT,
         realm_authority,
-        voting_mints: [
-            voting_mint_config,
-            voting_mint_config,
-            voting_mint_config,
-            voting_mint_config,
-        ],
-        time_offset: 0,
+        voting_mints: [voting_mint_config, voting_mint_config],
+        padding: [0, 0, 0, 0, 0, 0, 0],
         bump: 0,
+        reward_pool: Pubkey::new_unique(),
     };
 
     let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -472,15 +464,19 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
         cooldown_requested: false,
         kind: LockupKind::Constant,
         period: LockupPeriod::ThreeMonths,
+        _reserved0: [0; 16],
         _reserved1: [0; 5],
     };
 
     let deposit_entry = DepositEntry {
         lockup: lockup.clone(),
+        delegate: Pubkey::new_unique(),
         amount_deposited_native: 100000000,
         voting_mint_config_idx: 0,
         is_used: true,
+        _reserved0: [0; 32],
         _reserved1: [0; 6],
+        delegate_last_update_ts: 0,
     };
 
     let deposit_entries = [deposit_entry; 32];

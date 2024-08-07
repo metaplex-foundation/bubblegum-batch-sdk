@@ -12,14 +12,14 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Represents an off-chain compressed NFT merkle tree, that can be uploaded to
 /// an immutable storage, and picked up by DAS validatiors, that verify the correctness
-/// of a rollup.
-/// This type is used only for providing the rollup data to DAS validators,
-/// all the off-chain rollup changes should be done via RollupBuilder.
+/// of a batch mint.
+/// This type is used only for providing the batch mint data to DAS validators,
+/// all the off-chain batch mint changes should be done via BatchMintBuilder.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Rollup {
+pub struct BatchMint {
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub tree_id: Pubkey,
-    pub rolled_mints: Vec<RolledMintInstruction>,
+    pub batch_mints: Vec<BatchMintInstruction>,
     pub raw_metadata_map: HashMap<String, Box<RawValue>>, // URL of metadata -> JSON text
     pub max_depth: u32,
     pub max_buffer_size: u32,
@@ -29,22 +29,22 @@ pub struct Rollup {
     pub last_leaf_hash: [u8; 32], // validate
 }
 
-impl Rollup {
-    /// Serializes the rollup object into given destination.
+impl BatchMint {
+    /// Serializes the batch mint object into given destination.
     pub fn write_as_json(&self, writer: &mut dyn Write) -> serde_json::error::Result<()> {
         serde_json::to_writer(writer, self)
     }
 
-    pub fn read_as_json(reader: impl Read) -> serde_json::error::Result<Rollup> {
-        let rollup = serde_json::from_reader(reader)?;
-        Ok(rollup)
+    pub fn read_as_json(reader: impl Read) -> serde_json::error::Result<BatchMint> {
+        let batch_mint = serde_json::from_reader(reader)?;
+        Ok(batch_mint)
     }
 }
 
-impl PartialEq for Rollup {
+impl PartialEq for BatchMint {
     fn eq(&self, other: &Self) -> bool {
         self.tree_id == other.tree_id
-            && self.rolled_mints == other.rolled_mints
+            && self.batch_mints == other.batch_mints
             && self.max_depth == other.max_depth
             && self.max_buffer_size == other.max_buffer_size
             && self.merkle_root == other.merkle_root
@@ -53,29 +53,14 @@ impl PartialEq for Rollup {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct RolledMintInstruction {
+pub struct BatchMintInstruction {
     pub tree_update: ChangeLogEventV1, // validate // derive from nonce
     pub leaf_update: LeafSchema,       // validate
     pub mint_args: MetadataArgs,
-    // V0.1: enforce collection.verify == false
-    // V0.1: enforce creator.verify == false
-    // V0.2: add pub collection_signature: Option<Signature> - sign asset_id with collection authority
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub authority: Pubkey,
     #[serde(with = "serde_with::As::<Option<HashMap<DisplayFromStr, DisplayFromStr>>>")]
     pub creator_signature: Option<HashMap<Pubkey, Signature>>, // signatures of the asset with the creator pubkey to ensure verified creator
-}
-
-#[derive(Default, Clone)]
-pub struct BatchMintInstruction {
-    pub max_depth: u32,
-    pub max_buffer_size: u32,
-    pub num_minted: u64,
-    pub root: [u8; 32],
-    pub leaf: [u8; 32],
-    pub index: u32,
-    pub metadata_url: String,
-    pub file_checksum: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

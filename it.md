@@ -27,3 +27,31 @@ pnpm programs:build
 ```
 
 3) Run `cargo test`
+
+If during tests compilation you have errors like these:
+
+```
+error[E0308]: mismatched types
+  --> /Users/user/.cargo/git/checkouts/solana-program-library-f541f372004088f4/623df91/account-compression/programs/account-compression/src/noop/mod.rs:18:9
+   |
+17 |     fn id() -> Pubkey {
+   |                ------ expected `anchor_lang::prelude::Pubkey` because of return type
+18 |         spl_noop::id()
+   |         ^^^^^^^^^^^^^^ expected `anchor_lang::prelude::Pubkey`, found `solana_program::pubkey::Pubkey`
+```
+
+or
+
+```
+error[E0308]: mismatched types
+   --> /Users/user/.cargo/git/checkouts/solana-program-library-f541f372004088f4/623df91/account-compression/programs/account-compression/src/noop/mod.rs:27:9
+    |
+26  |     invoke(
+    |     ------ arguments to this function are incorrect
+27  |         &spl_noop::instruction(event.try_to_vec()?),
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Instruction`, found `solana_program::instruction::Instruction`
+```
+
+make sure that your `Cargo.lock` has only one solana-program version and it's **1.18.xx**. In other words drop manually from `.lock` file solana-program with versions different to 1.18.xx.
+
+This problem is happening when cargo loads different solana program versions, for example 1.18.21 and 2.0.4, we need to stick to 1.18.xx.

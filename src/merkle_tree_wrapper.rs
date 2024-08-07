@@ -4,7 +4,7 @@ use spl_account_compression::{ConcurrentMerkleTree, ConcurrentMerkleTreeError, N
 
 use spl_concurrent_merkle_tree::changelog::ChangeLog;
 
-use crate::errors::RollupError;
+use crate::errors::BatchMintError;
 
 /// Interface that abstracts over [ConcurrentMerkleTree]<DEPTH, BUF_SIZE>
 /// regardless const generic parameters.
@@ -180,7 +180,7 @@ make_tree_creator_funcs!(
     (30, 2048)
 );
 
-pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<Box<dyn ITree>, RollupError> {
+pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<Box<dyn ITree>, BatchMintError> {
     // Note: We do not create ConcurrentMerkleTree<A,B> object right inside of match statement
     // because of how Rust compiler reserves space for functions:
     // the total size of function in memory (i.e. frame size) is as big as total size of
@@ -228,7 +228,7 @@ pub fn make_concurrent_merkle_tree(max_dapth: u32, max_buf_size: u32) -> Result<
         (30, 512) => Ok(make_concurrent_merkle_tree_30_512()),
         (30, 1024) => Ok(make_concurrent_merkle_tree_30_1024()),
         (30, 2048) => Ok(make_concurrent_merkle_tree_30_2048()),
-        (d, s) => Err(RollupError::UnexpectedTreeSize(d, s)),
+        (d, s) => Err(BatchMintError::UnexpectedTreeSize(d, s)),
     }
 }
 

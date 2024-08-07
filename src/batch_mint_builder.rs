@@ -5,10 +5,10 @@ use anchor_lang::prelude::*;
 use mpl_bubblegum::types::{Creator, LeafSchema, MetadataArgs};
 use solana_sdk::signature::Signature;
 
-use crate::errors::RollupError;
+use crate::errors::BatchMintError;
 use crate::merkle_tree_wrapper::{make_concurrent_merkle_tree, IChangeLog, ITree};
 
-use crate::model::{ChangeLogEventV1, CollectionConfig, RolledMintInstruction, Rollup};
+use crate::model::{BatchMint, BatchMintInstruction, ChangeLogEventV1, CollectionConfig};
 
 use solana_sdk::keccak;
 use solana_sdk::pubkey::Pubkey;
@@ -18,11 +18,11 @@ use solana_sdk::pubkey::Pubkey;
 ///
 /// It allows to:
 /// * add assets to the wrapped merkle tree
-/// * generate a rollup that can be uploaded to an immutable storage
+/// * generate a batch mint that can be uploaded to an immutable storage
 /// * push all the preparations made off-chain to the Solana as a bubblegum tree
 ///
-/// TODO: Add link to the rollup documentation.
-pub struct RollupBuilder {
+/// TODO: Add link to the batch mint documentation.
+pub struct BatchMintBuilder {
     /// Public key of solana account that contains merkle data
     pub tree_account: Pubkey,
     /// depth of merkle tree
@@ -33,9 +33,9 @@ pub struct RollupBuilder {
     pub canopy_depth: u32,
     /// encapsulates [ConcurrentMerkleTree]
     pub merkle: Box<dyn ITree>,
-    /// See [Rollup::rolled_mints]
-    pub mints: BTreeMap<u64, RolledMintInstruction>,
-    /// See [Rollup::last_leaf_hash]
+    /// See [BatchMint::batch_mints]
+    pub mints: BTreeMap<u64, BatchMintInstruction>,
+    /// See [BatchMint::last_leaf_hash]
     pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
     pub canopy_leaves: Vec<[u8; 32]>,
@@ -43,18 +43,18 @@ pub struct RollupBuilder {
     pub collection_config: Option<CollectionConfig>,
 }
 
-impl RollupBuilder {
+impl BatchMintBuilder {
     /// Create a builder with an empty merkle tree of given depth and max buffer size inside.
     pub(crate) fn new(
         tree_account: Pubkey,
         max_depth: u32,
         max_buffer_size: u32,
         canopy_depth: u32,
-    ) -> std::result::Result<RollupBuilder, RollupError> {
+    ) -> std::result::Result<BatchMintBuilder, BatchMintError> {
         let mut merkle = make_concurrent_merkle_tree(max_depth, max_buffer_size)?;
         merkle.initialize().unwrap();
 
-        Ok(RollupBuilder {
+        Ok(BatchMintBuilder {
             mints: BTreeMap::new(),
             tree_account,
             max_depth,
@@ -77,7 +77,7 @@ impl RollupBuilder {
         owner: &Pubkey,
         delegate: &Pubkey,
         metadata_args: &MetadataArgs,
-    ) -> std::result::Result<MetadataArgsHash, RollupError> {
+    ) -> std::result::Result<MetadataArgsHash, BatchMintError> {
         let metadata_args_hash = hash_metadata_args(
             self.mints.len() as u64,
             &self.tree_account,
@@ -111,7 +111,7 @@ impl RollupBuilder {
             }
         }
 
-        let rolled_mint = RolledMintInstruction {
+        let batch_mint = BatchMintInstruction {
             tree_update: ChangeLogEventV1 {
                 id: self.tree_account.clone(),
                 path: path.into_iter().map(Into::into).collect::<Vec<_>>(),
@@ -130,7 +130,7 @@ impl RollupBuilder {
             authority: owner.clone(),
             creator_signature: None,
         };
-        self.mints.insert(nonce, rolled_mint);
+        self.mints.insert(nonce, batch_mint);
 
         Ok(metadata_args_hash)
     }
@@ -145,41 +145,41 @@ impl RollupBuilder {
     pub fn add_signatures_for_verified_creators(
         &mut self,
         nonce_and_creator_signatures: HashMap<u64, HashMap<Pubkey, Signature>>,
-    ) -> std::result::Result<(), RollupError> {
+    ) -> std::result::Result<(), BatchMintError> {
         for (asset_nonce, creator_signature) in nonce_and_creator_signatures {
             if creator_signature.is_empty() {
                 // not to set Some() to creator_signature if HashMap is empty
                 continue;
             }
 
-            if let Some(rolled_mint) = self.mints.get_mut(&asset_nonce) {
-                Self::check_extra_creators(&rolled_mint.mint_args.creators, &creator_signature)?;
+            if let Some(batch_mint) = self.mints.get_mut(&asset_nonce) {
+                Self::check_extra_creators(&batch_mint.mint_args.creators, &creator_signature)?;
 
-                let mut rolled_signatures = rolled_mint.creator_signature.clone().unwrap_or_default();
+                let mut batch_mint_signatures = batch_mint.creator_signature.clone().unwrap_or_default();
 
                 let metadata_hash =
-                    MetadataArgsHash::new(&rolled_mint.leaf_update, &self.tree_account, &rolled_mint.mint_args);
+                    MetadataArgsHash::new(&batch_mint.leaf_update, &self.tree_account, &batch_mint.mint_args);
                 let signed_message = metadata_hash.get_message();
 
-                for creator in rolled_mint.mint_args.creators.iter_mut() {
+                for creator in batch_mint.mint_args.creators.iter_mut() {
                     if let Some(signature) = creator_signature.get(&creator.address) {
                         if !creator.verified {
-                            return Err(RollupError::CannotAddSignatureForUnverifiedCreator(
+                            return Err(BatchMintError::CannotAddSignatureForUnverifiedCreator(
                                 creator.address.to_string(),
                             ));
                         }
 
                         if !verify_signature(&creator.address, &signed_message, signature) {
-                            return Err(RollupError::InvalidCreatorsSignature(creator.address.to_string()));
+                            return Err(BatchMintError::InvalidCreatorsSignature(creator.address.to_string()));
                         }
 
-                        rolled_signatures.insert(creator.address, *signature);
+                        batch_mint_signatures.insert(creator.address, *signature);
                     }
                 }
 
-                rolled_mint.creator_signature = Some(rolled_signatures);
+                batch_mint.creator_signature = Some(batch_mint_signatures);
             } else {
-                return Err(RollupError::MissingRolledMint(asset_nonce));
+                return Err(BatchMintError::MissingBatchMint(asset_nonce));
             }
         }
 
@@ -189,54 +189,54 @@ impl RollupBuilder {
     fn check_extra_creators(
         asset_creators: &[Creator],
         creator_signatures: &HashMap<Pubkey, Signature>,
-    ) -> std::result::Result<(), RollupError> {
+    ) -> std::result::Result<(), BatchMintError> {
         let asset_creator_keys: HashSet<_> = asset_creators.iter().map(|c| &c.address).collect();
         let creator_keys_from_signatures: HashSet<_> = creator_signatures.keys().collect();
 
         let extra_creators: HashSet<_> = creator_keys_from_signatures.difference(&asset_creator_keys).collect();
 
         if !extra_creators.is_empty() {
-            return Err(RollupError::ExtraCreatorsReceived);
+            return Err(BatchMintError::ExtraCreatorsReceived);
         }
         Ok(())
     }
 
-    pub fn build_rollup(&self) -> std::result::Result<Rollup, RollupError> {
+    pub fn build_batch_mint(&self) -> std::result::Result<BatchMint, BatchMintError> {
         // make sure user did not miss any creator's signature
-        for (_, rolled_mint) in &self.mints {
-            for creator in &rolled_mint.mint_args.creators {
+        for (_, batch_mint) in &self.mints {
+            for creator in &batch_mint.mint_args.creators {
                 if creator.verified {
-                    if let Some(creator_signatures) = &rolled_mint.creator_signature {
+                    if let Some(creator_signatures) = &batch_mint.creator_signature {
                         if !creator_signatures.contains_key(&creator.address) {
-                            return Err(RollupError::MissedSignatureFromCreator(creator.address.to_string()));
+                            return Err(BatchMintError::MissedSignatureFromCreator(creator.address.to_string()));
                         }
                     } else {
-                        return Err(RollupError::MissedSignaturesForAsset(
-                            rolled_mint.leaf_update.id().to_string(),
+                        return Err(BatchMintError::MissedSignaturesForAsset(
+                            batch_mint.leaf_update.id().to_string(),
                         ));
                     }
                 }
             }
-            if let Some(ref collection) = rolled_mint.mint_args.collection {
+            if let Some(ref collection) = batch_mint.mint_args.collection {
                 if !collection.verified {
                     continue;
                 }
                 if let Some(ref collection_config) = self.collection_config {
                     if collection.key != collection_config.collection_mint {
-                        return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+                        return Err(BatchMintError::MissingCollectionSignature(collection.key.to_string()));
                     }
                     continue;
                 }
                 // no collection_config but collection.verified == true for some mint
-                return Err(RollupError::MissingCollectionSignature(collection.key.to_string()));
+                return Err(BatchMintError::MissingCollectionSignature(collection.key.to_string()));
             }
         }
 
-        Ok(Rollup {
+        Ok(BatchMint {
             tree_id: self.tree_account,
             raw_metadata_map: HashMap::new(), // TODO: fill? this may be provided by the client for every asset, maybe in add_asset as an optional parameter
             max_depth: self.max_depth,
-            rolled_mints: self.mints.values().cloned().collect(), // TODO: maybe it's better to move out mints not clone all of it
+            batch_mints: self.mints.values().cloned().collect(), // TODO: maybe it's better to move out mints not clone all of it
             merkle_root: self.merkle.get_root(),
             last_leaf_hash: self.last_leaf_hash,
             max_buffer_size: self.max_buffer_size,
@@ -311,7 +311,7 @@ impl MetadataArgsHash {
 /// Hashes given merkle tree leaf asset.
 ///
 /// ## Arguments
-/// `nonce` - should be `rollup_builder.mints.len() as u64`
+/// `nonce` - should be `batch_mint_builder.mints.len() as u64`
 /// `tree_account` - pubkey of the account the resides in
 /// `owner` - the asset owner
 /// `delegate` - [delegate authority](https://developers.metaplex.com/bubblegum/delegate-cnfts) of the asset allowed to perform actions on behalf of the owner - transferring or burning
@@ -384,26 +384,26 @@ fn make_changelog_path(changelog: &dyn IChangeLog) -> Vec<spl_account_compressio
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::model::Rollup;
+    use crate::model::BatchMint;
     use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
     use std::{io::BufWriter, str::FromStr};
 
     #[test]
-    fn test_create_empty_rollup() {
-        // Creating rollup builder
-        let builder = RollupBuilder::new(Pubkey::new_unique(), 10, 32, 0).unwrap();
+    fn test_create_empty_batch_mint() {
+        // Creating batch mint builder
+        let builder = BatchMintBuilder::new(Pubkey::new_unique(), 10, 32, 0).unwrap();
 
-        // converting into rollup without adding any assets
-        let rollup = builder.build_rollup().unwrap();
+        // converting into batch mint without adding any assets
+        let batch_mint = builder.build_batch_mint().unwrap();
 
         // serializing into JSON, in real flow this JSON probably would be written to a file
         let mut buffer = BufWriter::new(Vec::new());
-        rollup.write_as_json(&mut buffer).unwrap();
+        batch_mint.write_as_json(&mut buffer).unwrap();
 
-        // restoring rollup from the JSON
-        let restored_rollup = Rollup::read_as_json(buffer.buffer()).unwrap();
+        // restoring batch mint from the JSON
+        let restored_batch_mint = BatchMint::read_as_json(buffer.buffer()).unwrap();
 
-        assert_eq!(rollup, restored_rollup);
+        assert_eq!(batch_mint, restored_batch_mint);
     }
 
     #[test]
@@ -411,19 +411,19 @@ mod test {
         let owner = Pubkey::new_unique();
         let delegate = Pubkey::new_unique();
 
-        let mut rollup_builder = RollupBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
+        let mut batch_mint_builder = BatchMintBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
 
         for i in 1u8..=32 {
             let ma = test_metadata_args(i, vec![]);
-            rollup_builder.add_asset(&owner, &delegate, &ma).unwrap();
+            batch_mint_builder.add_asset(&owner, &delegate, &ma).unwrap();
         }
 
-        let canopy_4 = &rollup_builder.canopy_leaves;
+        let canopy_4 = &batch_mint_builder.canopy_leaves;
         assert_eq!(canopy_4.len(), 16);
 
         let leaf_1_hash = hash_metadata_args(
             0,
-            &rollup_builder.tree_account,
+            &batch_mint_builder.tree_account,
             &owner,
             &delegate,
             &test_metadata_args(1u8, vec![]),
@@ -431,7 +431,7 @@ mod test {
         .hashed_leaf;
         let leaf_2_hash = hash_metadata_args(
             1,
-            &rollup_builder.tree_account,
+            &batch_mint_builder.tree_account,
             &owner,
             &delegate,
             &test_metadata_args(2u8, vec![]),
@@ -441,7 +441,7 @@ mod test {
 
         let leaf_31_hash = hash_metadata_args(
             30,
-            &rollup_builder.tree_account,
+            &batch_mint_builder.tree_account,
             &owner,
             &delegate,
             &test_metadata_args(31u8, vec![]),
@@ -449,7 +449,7 @@ mod test {
         .hashed_leaf;
         let leaf_32_hash = hash_metadata_args(
             31,
-            &rollup_builder.tree_account,
+            &batch_mint_builder.tree_account,
             &owner,
             &delegate,
             &test_metadata_args(32u8, vec![]),
@@ -463,14 +463,14 @@ mod test {
         let owner = Pubkey::new_unique();
         let delegate = Pubkey::new_unique();
 
-        let mut rollup_builder = RollupBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
+        let mut batch_mint_builder = BatchMintBuilder::new(Pubkey::new_unique(), 5, 8, 4).unwrap();
 
         for i in 1u8..=((1u8 << 5) / 2) {
             let ma = test_metadata_args(i, vec![]);
-            rollup_builder.add_asset(&owner, &delegate, &ma).unwrap();
+            batch_mint_builder.add_asset(&owner, &delegate, &ma).unwrap();
         }
 
-        assert_eq!(rollup_builder.canopy_leaves.len(), 8);
+        assert_eq!(batch_mint_builder.canopy_leaves.len(), 8);
     }
 
     #[test]
@@ -528,15 +528,15 @@ mod test {
 
         let metadata_args = test_metadata_args(1u8, asset_creators.clone());
 
-        let mut rollup_builder = RollupBuilder::new(tree_account, 5, 8, 4).unwrap();
+        let mut batch_mint_builder = BatchMintBuilder::new(tree_account, 5, 8, 4).unwrap();
 
-        let metadata_arg_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
+        let metadata_arg_hash = batch_mint_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
-        // we cannot build rollup with set creator.verified=true but without signatures
-        match rollup_builder.build_rollup() {
+        // we cannot build batch mint with set creator.verified=true but without signatures
+        match batch_mint_builder.build_batch_mint() {
             Ok(_) => panic!("Action should fail"),
             Err(err) => match err {
-                RollupError::MissedSignaturesForAsset(key) => {
+                BatchMintError::MissedSignaturesForAsset(key) => {
                     assert_eq!(key, metadata_arg_hash.get_asset_id().to_string());
                 }
                 _ => panic!("Method returned wrong error"),
@@ -551,16 +551,16 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_arg_hash.get_nonce(), creators_signatures);
 
-        rollup_builder
+        batch_mint_builder
             .add_signatures_for_verified_creators(message_and_signatures)
             .unwrap();
 
-        // once we add missed signature we can build the rollup
-        rollup_builder.build_rollup().unwrap();
+        // once we add missed signature we can build the batch mint
+        batch_mint_builder.build_batch_mint().unwrap();
 
         let metadata_args = test_metadata_args(2u8, asset_creators);
 
-        let metadata_args_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
+        let metadata_args_hash = batch_mint_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         // sign wrong message
         let signature = creator_key.sign_message([1; 32].as_ref());
@@ -571,10 +571,10 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_args_hash.get_nonce(), creators_signatures);
 
-        match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
+        match batch_mint_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
             Err(err) => match err {
-                RollupError::InvalidCreatorsSignature(key) => {
+                BatchMintError::InvalidCreatorsSignature(key) => {
                     assert_eq!(key, creator_key.pubkey().to_string());
                 }
                 _ => panic!("Method returned wrong error"),
@@ -592,10 +592,10 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_args_hash.get_nonce(), creators_signatures);
 
-        match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
+        match batch_mint_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
             Err(err) => match err {
-                RollupError::ExtraCreatorsReceived => {}
+                BatchMintError::ExtraCreatorsReceived => {}
                 _ => panic!("Method returned wrong error"),
             },
         }
@@ -608,7 +608,7 @@ mod test {
 
         let metadata_args = test_metadata_args(3u8, asset_creators);
 
-        let metadata_args_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
+        let metadata_args_hash = batch_mint_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         let signature = creator_key.sign_message(&metadata_args_hash.get_message());
 
@@ -619,10 +619,10 @@ mod test {
         message_and_signatures.insert(metadata_args_hash.get_nonce(), creators_signatures);
 
         // we cannot add signature for asset with unverified creator
-        match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
+        match batch_mint_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
             Err(err) => match err {
-                RollupError::CannotAddSignatureForUnverifiedCreator(key) => {
+                BatchMintError::CannotAddSignatureForUnverifiedCreator(key) => {
                     assert_eq!(key, creator_key.pubkey().to_string());
                 }
                 _ => panic!("Method returned wrong error"),
@@ -652,11 +652,11 @@ mod test {
             },
         ];
 
-        let mut rollup_builder = RollupBuilder::new(tree_account, 5, 8, 4).unwrap();
+        let mut batch_mint_builder = BatchMintBuilder::new(tree_account, 5, 8, 4).unwrap();
 
         let metadata_args = test_metadata_args(1u8, asset_creators.clone());
 
-        let metadata_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
+        let metadata_hash = batch_mint_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         let mut creators_signatures = HashMap::new();
 
@@ -669,12 +669,12 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_hash.get_nonce(), creators_signatures);
 
-        rollup_builder
+        batch_mint_builder
             .add_signatures_for_verified_creators(message_and_signatures)
             .unwrap();
 
         // successful scenario - two creators are verified
-        let _ = rollup_builder.build_rollup().unwrap();
+        let _ = batch_mint_builder.build_batch_mint().unwrap();
 
         let asset_creators = vec![
             Creator {
@@ -691,7 +691,7 @@ mod test {
 
         let metadata_args = test_metadata_args(2u8, asset_creators.clone());
 
-        let metadata_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
+        let metadata_hash = batch_mint_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         let mut creators_signatures = HashMap::new();
 
@@ -701,12 +701,12 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_hash.get_nonce(), creators_signatures);
 
-        rollup_builder
+        batch_mint_builder
             .add_signatures_for_verified_creators(message_and_signatures)
             .unwrap();
 
         // successful scenario - only one of creators is verified
-        let _ = rollup_builder.build_rollup().unwrap();
+        let _ = batch_mint_builder.build_batch_mint().unwrap();
 
         let asset_creators = vec![
             Creator {
@@ -725,7 +725,7 @@ mod test {
 
         let metadata_args = test_metadata_args(3u8, asset_creators.clone());
 
-        let metadata_hash = rollup_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
+        let metadata_hash = batch_mint_builder.add_asset(&owner, &delegate, &metadata_args).unwrap();
 
         let mut creators_signatures = HashMap::new();
 
@@ -738,10 +738,10 @@ mod test {
         let mut message_and_signatures = HashMap::new();
         message_and_signatures.insert(metadata_hash.get_nonce(), creators_signatures);
 
-        match rollup_builder.add_signatures_for_verified_creators(message_and_signatures) {
+        match batch_mint_builder.add_signatures_for_verified_creators(message_and_signatures) {
             Ok(_) => panic!("Action should fail"),
             Err(err) => match err {
-                RollupError::ExtraCreatorsReceived => {}
+                BatchMintError::ExtraCreatorsReceived => {}
                 _ => panic!("Method returned wrong error"),
             },
         }
