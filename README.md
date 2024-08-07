@@ -153,7 +153,7 @@ but prepare a part of batch mint, and then later (after hours, days, etc.)
 fill the rest of asserts, and push the tree to Solana.
 
 For that you need to create a `BatchMintBuilder`, populate it with a batch of assets,
-generate generate the `BatchMint` object and save it as JSON somewhere
+generate the `BatchMint` object and save it as JSON somewhere
 (immutable storage, object store, local file, etc.)
 
 ```rust
