@@ -8,7 +8,7 @@ use solana_sdk::signature::Signature;
 use crate::errors::BatchMintError;
 use crate::merkle_tree_wrapper::{make_concurrent_merkle_tree, IChangeLog, ITree};
 
-use crate::model::{BatchMint, ChangeLogEventV1, RolledMintInstruction};
+use crate::model::{BatchMint, ChangeLogEventV1, RolledMintInstruction, CollectionConfig};
 
 use solana_sdk::keccak;
 use solana_sdk::pubkey::Pubkey;
@@ -39,6 +39,8 @@ pub struct BatchMintBuilder {
     pub last_leaf_hash: [u8; 32],
     /// canopy leaf nodes
     pub canopy_leaves: Vec<[u8; 32]>,
+    /// config for verifying collection
+    pub collection_config: Option<CollectionConfig>,
 }
 
 impl BatchMintBuilder {
@@ -53,14 +55,15 @@ impl BatchMintBuilder {
         merkle.initialize().unwrap();
 
         Ok(BatchMintBuilder {
-            tree_account: tree_account,
-            max_depth: max_depth,
-            max_buffer_size: max_buffer_size,
-            canopy_depth: canopy_depth,
-            merkle: merkle,
             mints: BTreeMap::new(),
+            tree_account,
+            max_depth,
+            max_buffer_size,
+            canopy_depth,
+            merkle,
             last_leaf_hash: [0; 32],
             canopy_leaves: Vec::new(),
+            collection_config: None,
         })
     }
 
@@ -120,8 +123,8 @@ impl BatchMintBuilder {
                 owner: *owner,
                 delegate: *delegate,
                 nonce,
-                data_hash: data_hash,
-                creator_hash: creator_hash,
+                data_hash,
+                creator_hash,
             },
             mint_args: metadata_args.clone(),
             authority: owner.clone(),
@@ -195,7 +198,6 @@ impl BatchMintBuilder {
         if !extra_creators.is_empty() {
             return Err(BatchMintError::ExtraCreatorsReceived);
         }
-
         Ok(())
     }
 
@@ -215,6 +217,19 @@ impl BatchMintBuilder {
                     }
                 }
             }
+            if let Some(ref collection) = rolled_mint.mint_args.collection {
+                if !collection.verified {
+                    continue;
+                }
+                if let Some(ref collection_config) = self.collection_config {
+                    if collection.key != collection_config.collection_mint {
+                        return Err(BatchMintError::MissingCollectionSignature(collection.key.to_string()));
+                    }
+                    continue;
+                }
+                // no collection_config but collection.verified == true for some mint
+                return Err(BatchMintError::MissingCollectionSignature(collection.key.to_string()));
+            }
         }
 
         Ok(BatchMint {
@@ -226,6 +241,11 @@ impl BatchMintBuilder {
             last_leaf_hash: self.last_leaf_hash,
             max_buffer_size: self.max_buffer_size,
         })
+    }
+
+    #[inline(always)]
+    pub fn setup_collection_config(&mut self, collection_config: CollectionConfig) {
+        self.collection_config = Some(collection_config)
     }
 }
 
