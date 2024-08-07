@@ -234,8 +234,7 @@ impl BatchMintClient {
             }
         }
 
-        batch_mint_builder.build_batch_mint()?; // TODO: maybe we don't need it
-                                                // We're just using remaining_accounts to send proofs because they are of the same type
+        // We're just using remaining_accounts to send proofs because they are of the same type
         let remaining_accounts = batch_mint_builder
             .merkle
             .get_rightmost_proof()

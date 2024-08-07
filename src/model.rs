@@ -57,8 +57,6 @@ pub struct BatchMintInstruction {
     pub tree_update: ChangeLogEventV1, // validate // derive from nonce
     pub leaf_update: LeafSchema,       // validate
     pub mint_args: MetadataArgs,
-    // V0.1: enforce collection.verify == false
-    // V0.1: enforce creator.verify == false
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub authority: Pubkey,
     #[serde(with = "serde_with::As::<Option<HashMap<DisplayFromStr, DisplayFromStr>>>")]

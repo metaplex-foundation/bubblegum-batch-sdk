@@ -1,8 +1,8 @@
 mod utils;
 
-use batch_sdk::batch_mint_client::BatchMintClient;
-use batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
 use bubblegum::state::{REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
+use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
+use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
 use mpl_bubblegum::types::MetadataArgs;
 use mplx_staking_states::state::{
     DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR,
@@ -217,7 +217,7 @@ async fn test_half_filled_assets() {
 async fn test_canopy_resume() {
     // Prepare env
 
-    use batch_sdk::pubkey_util;
+    use bubblegum_batch_sdk::pubkey_util;
     use mpl_bubblegum::instructions::AddCanopyBuilder;
     use solana_sdk::{system_program, transaction::Transaction};
     let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8919).await;
