@@ -2,7 +2,7 @@ use crate::batch_mint_builder::{make_changelog_path, verify_signature, MetadataA
 use crate::errors::BatchMintError;
 use crate::merkle_tree_wrapper::make_concurrent_merkle_tree;
 use crate::model::{BatchMint, BatchMintInstruction, PathNode};
-use borsh::BorshSerialize;
+use anchor_lang::AnchorSerialize;
 use bubblegum::utils::get_asset_id;
 use solana_program::keccak;
 use solana_program::keccak::Hash;
