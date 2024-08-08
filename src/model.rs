@@ -15,7 +15,7 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 /// of a batch mint.
 /// This type is used only for providing the batch mint data to DAS validators,
 /// all the off-chain batch mint changes should be done via BatchMintBuilder.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BatchMint {
     #[serde(with = "serde_with::As::<serde_with::DisplayFromStr>")]
     pub tree_id: Pubkey,
