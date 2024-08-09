@@ -39,3 +39,4 @@ blockbuster = { git = "https://github.com/adm-metaex/blockbuster", branch = "rem
 tokio = "1"
 base64 = "0.22"
 serial_test = "3"
+rand = "0.8.5"
