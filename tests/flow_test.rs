@@ -157,7 +157,9 @@ async fn test_half_filled_assets() {
         .unwrap();
 
     for i in 1u8..(((1 << DEPTH) / 2) + 2) {
-        batch_mint_builder.add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i));
+        batch_mint_builder
+            .add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i))
+            .unwrap();
     }
 
     let _sig_2 = batch_mint_client
@@ -363,7 +365,7 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
         path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
     });
 
-    let mut tvp_process = tvr.run().unwrap();
+    let tvp_process = tvr.run().unwrap();
 
     let url = format!("http://127.0.0.1:{port}"); // Solana RPC node address
     let solana_client = Arc::new(RpcClient::new_with_timeout(url, Duration::from_secs(1)));

@@ -365,7 +365,7 @@ fn hash_metadata_args(
 
 /// Takes the changelog entry and constructs the path from the leaf (the asset,
 /// the changelog entry is created for) up to the root of the merkel tree.
-fn make_changelog_path(changelog: &dyn IChangeLog) -> Vec<spl_account_compression::state::PathNode> {
+pub fn make_changelog_path(changelog: &dyn IChangeLog) -> Vec<spl_account_compression::state::PathNode> {
     let path_len = changelog.path_len();
     let mut path: Vec<spl_account_compression::state::PathNode> = changelog
         .path_iter()
