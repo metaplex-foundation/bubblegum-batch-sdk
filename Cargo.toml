@@ -33,7 +33,7 @@ spl-merkle-tree-reference = { git = "https://github.com/StanChe/solana-program-l
 spl-noop = { git = "https://github.com/StanChe/solana-program-library.git", branch = "feature/init_with_root" }
 mplx-staking-states = { git = "https://github.com/adm-metaex/mplx-staking.git" }
 
-blockbuster = { git = "https://github.com/adm-metaex/blockbuster", branch = "remove-bubblegum-submodule" }
+blockbuster = { git = "https://github.com/adm-metaex/blockbuster", branch = "feat/create-tree-with-root" }
 rand = "0.8.5"
 
 [dev-dependencies]
