@@ -34,9 +34,9 @@ spl-noop = { git = "https://github.com/StanChe/solana-program-library.git", bran
 mplx-staking-states = { git = "https://github.com/adm-metaex/mplx-staking.git" }
 
 blockbuster = { git = "https://github.com/adm-metaex/blockbuster", branch = "remove-bubblegum-submodule" }
+rand = "0.8.5"
 
 [dev-dependencies]
 tokio = "1"
 base64 = "0.22"
 serial_test = "3"
-rand = "0.8.5"

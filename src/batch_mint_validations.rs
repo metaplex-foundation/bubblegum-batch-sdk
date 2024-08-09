@@ -1,15 +1,19 @@
 use crate::batch_mint_builder::{make_changelog_path, verify_signature, MetadataArgsHash};
 use crate::errors::BatchMintError;
 use crate::merkle_tree_wrapper::make_concurrent_merkle_tree;
-use crate::model::{BatchMint, BatchMintInstruction, PathNode};
+use crate::model::{BatchMint, BatchMintInstruction, ChangeLogEventV1, PathNode};
 use anchor_lang::AnchorSerialize;
 use bubblegum::utils::get_asset_id;
+use mpl_bubblegum::types::{Collection, LeafSchema, MetadataArgs, TokenProgramVersion, TokenStandard};
+use rand::{thread_rng, Rng};
 use solana_program::keccak;
 use solana_program::keccak::Hash;
 use solana_program::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
+use spl_concurrent_merkle_tree::concurrent_merkle_tree::ConcurrentMerkleTree;
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::str::FromStr;
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum BatchMintValidationError {
@@ -233,162 +237,156 @@ pub async fn validate_batch_mint(
     )
 }
 
+pub fn generate_batch_mint(size: usize) -> BatchMint {
+    let authority = Pubkey::from_str("3VvLDXqJbw3heyRwFxv8MmurPznmDVUJS9gPMX2BDqfM").unwrap();
+    let tree = Pubkey::from_str("HxhCw9g3kZvrdg9zZvctmh6qpSDg1FfsBXfFvRkbCHB7").unwrap();
+    let mut mints = Vec::new();
+    let mut merkle = ConcurrentMerkleTree::<10, 32>::new();
+    merkle.initialize().unwrap();
+
+    let mut last_leaf_hash = [0u8; 32];
+    for i in 0..size {
+        let mint_args = MetadataArgs {
+            name: thread_rng()
+                .sample_iter(rand::distributions::Alphanumeric)
+                .take(15)
+                .map(char::from)
+                .collect(),
+            symbol: thread_rng()
+                .sample_iter(rand::distributions::Alphanumeric)
+                .take(5)
+                .map(char::from)
+                .collect(),
+            uri: format!(
+                "https://arweave.net/{}",
+                thread_rng()
+                    .sample_iter(rand::distributions::Alphanumeric)
+                    .take(43)
+                    .map(char::from)
+                    .collect::<String>()
+            ),
+            seller_fee_basis_points: thread_rng().sample(rand::distributions::Uniform::new(0, 10000)),
+            primary_sale_happened: thread_rng().gen_bool(0.5),
+            is_mutable: thread_rng().gen_bool(0.5),
+            edition_nonce: if thread_rng().gen_bool(0.5) {
+                None
+            } else {
+                Some(thread_rng().sample(rand::distributions::Uniform::new(0, 255)))
+            },
+            token_standard: if thread_rng().gen_bool(0.5) {
+                None
+            } else {
+                Some(TokenStandard::NonFungible)
+            },
+            collection: if thread_rng().gen_bool(0.5) {
+                None
+            } else {
+                Some(Collection {
+                    verified: false,
+                    key: Pubkey::new_unique(),
+                })
+            },
+            uses: None, // todo
+            token_program_version: TokenProgramVersion::Original,
+            creators: (0..thread_rng().sample(rand::distributions::Uniform::new(1, 5)))
+                .map(|_| mpl_bubblegum::types::Creator {
+                    address: Pubkey::new_unique(),
+                    verified: false,
+                    share: thread_rng().sample(rand::distributions::Uniform::new(0, 100)),
+                })
+                .collect(),
+        };
+        let nonce = i as u64;
+        let id = mpl_bubblegum::utils::get_asset_id(&tree, nonce);
+        let owner = authority.clone();
+        let delegate = authority.clone();
+
+        let metadata_args_hash = keccak::hashv(&[mint_args.try_to_vec().unwrap().as_slice()]);
+        let data_hash = keccak::hashv(&[
+            &metadata_args_hash.to_bytes(),
+            &mint_args.seller_fee_basis_points.to_le_bytes(),
+        ]);
+        let creator_data = mint_args
+            .creators
+            .iter()
+            .map(|c| [c.address.as_ref(), &[c.verified as u8], &[c.share]].concat())
+            .collect::<Vec<_>>();
+        let creator_hash = keccak::hashv(
+            creator_data
+                .iter()
+                .map(|c| c.as_slice())
+                .collect::<Vec<&[u8]>>()
+                .as_ref(),
+        );
+
+        let hashed_leaf = keccak::hashv(&[
+            &[1], //self.version().to_bytes()
+            id.as_ref(),
+            owner.as_ref(),
+            delegate.as_ref(),
+            nonce.to_le_bytes().as_ref(),
+            data_hash.as_ref(),
+            creator_hash.as_ref(),
+        ])
+        .to_bytes();
+        merkle.append(hashed_leaf).unwrap();
+        last_leaf_hash = hashed_leaf;
+        let changelog = merkle.change_logs[merkle.active_index as usize];
+        let path_len = changelog.path.len() as u32;
+        let mut path: Vec<spl_account_compression::state::PathNode> = changelog
+            .path
+            .iter()
+            .enumerate()
+            .map(|(lvl, n)| {
+                spl_account_compression::state::PathNode::new(
+                    *n,
+                    (1 << (path_len - lvl as u32)) + (changelog.index >> lvl),
+                )
+            })
+            .collect();
+        path.push(spl_account_compression::state::PathNode::new(changelog.root, 1));
+
+        let rolled_mint = BatchMintInstruction {
+            tree_update: ChangeLogEventV1 {
+                id: tree,
+                path: path.into_iter().map(Into::into).collect::<Vec<_>>(),
+                seq: merkle.sequence_number,
+                index: changelog.index,
+            },
+            leaf_update: LeafSchema::V1 {
+                id,
+                owner,
+                delegate,
+                nonce,
+                data_hash: data_hash.to_bytes(),
+                creator_hash: creator_hash.to_bytes(),
+            },
+            mint_args,
+            authority,
+            creator_signature: None,
+        };
+        mints.push(rolled_mint);
+    }
+    let batch_mint = BatchMint {
+        tree_id: tree,
+        raw_metadata_map: HashMap::new(),
+        max_depth: 10,
+        batch_mints: mints,
+        merkle_root: merkle.get_root(),
+        last_leaf_hash,
+        max_buffer_size: 32,
+    };
+
+    batch_mint
+}
+
 #[cfg(test)]
 pub mod tests {
-    use crate::batch_mint_validations::{validate_batch_mint, BatchMintValidationError};
+    use crate::batch_mint_validations::{generate_batch_mint, validate_batch_mint, BatchMintValidationError};
     use crate::errors::BatchMintError;
-    use crate::model::{BatchMint, BatchMintInstruction, ChangeLogEventV1, PathNode};
-    use borsh::BorshSerialize;
-    use mpl_bubblegum::types::{Collection, LeafSchema, MetadataArgs, TokenProgramVersion, TokenStandard};
-    use rand::{thread_rng, Rng};
-    use solana_program::keccak;
+    use crate::model::PathNode;
+    use mpl_bubblegum::types::LeafSchema;
     use solana_program::pubkey::Pubkey;
-    use spl_concurrent_merkle_tree::concurrent_merkle_tree::ConcurrentMerkleTree;
-    use std::collections::HashMap;
-    use std::str::FromStr;
-
-    pub fn generate_batch_mint(size: usize) -> BatchMint {
-        let authority = Pubkey::from_str("3VvLDXqJbw3heyRwFxv8MmurPznmDVUJS9gPMX2BDqfM").unwrap();
-        let tree = Pubkey::from_str("HxhCw9g3kZvrdg9zZvctmh6qpSDg1FfsBXfFvRkbCHB7").unwrap();
-        let mut mints = Vec::new();
-        let mut merkle = ConcurrentMerkleTree::<10, 32>::new();
-        merkle.initialize().unwrap();
-
-        let mut last_leaf_hash = [0u8; 32];
-        for i in 0..size {
-            let mint_args = MetadataArgs {
-                name: thread_rng()
-                    .sample_iter(rand::distributions::Alphanumeric)
-                    .take(15)
-                    .map(char::from)
-                    .collect(),
-                symbol: thread_rng()
-                    .sample_iter(rand::distributions::Alphanumeric)
-                    .take(5)
-                    .map(char::from)
-                    .collect(),
-                uri: format!(
-                    "https://arweave.net/{}",
-                    thread_rng()
-                        .sample_iter(rand::distributions::Alphanumeric)
-                        .take(43)
-                        .map(char::from)
-                        .collect::<String>()
-                ),
-                seller_fee_basis_points: thread_rng().sample(rand::distributions::Uniform::new(0, 10000)),
-                primary_sale_happened: thread_rng().gen_bool(0.5),
-                is_mutable: thread_rng().gen_bool(0.5),
-                edition_nonce: if thread_rng().gen_bool(0.5) {
-                    None
-                } else {
-                    Some(thread_rng().sample(rand::distributions::Uniform::new(0, 255)))
-                },
-                token_standard: if thread_rng().gen_bool(0.5) {
-                    None
-                } else {
-                    Some(TokenStandard::NonFungible)
-                },
-                collection: if thread_rng().gen_bool(0.5) {
-                    None
-                } else {
-                    Some(Collection {
-                        verified: false,
-                        key: Pubkey::new_unique(),
-                    })
-                },
-                uses: None, // todo
-                token_program_version: TokenProgramVersion::Original,
-                creators: (0..thread_rng().sample(rand::distributions::Uniform::new(1, 5)))
-                    .map(|_| mpl_bubblegum::types::Creator {
-                        address: Pubkey::new_unique(),
-                        verified: false,
-                        share: thread_rng().sample(rand::distributions::Uniform::new(0, 100)),
-                    })
-                    .collect(),
-            };
-            let nonce = i as u64;
-            let id = mpl_bubblegum::utils::get_asset_id(&tree, nonce);
-            let owner = authority.clone();
-            let delegate = authority.clone();
-
-            let metadata_args_hash = keccak::hashv(&[mint_args.try_to_vec().unwrap().as_slice()]);
-            let data_hash = keccak::hashv(&[
-                &metadata_args_hash.to_bytes(),
-                &mint_args.seller_fee_basis_points.to_le_bytes(),
-            ]);
-            let creator_data = mint_args
-                .creators
-                .iter()
-                .map(|c| [c.address.as_ref(), &[c.verified as u8], &[c.share]].concat())
-                .collect::<Vec<_>>();
-            let creator_hash = keccak::hashv(
-                creator_data
-                    .iter()
-                    .map(|c| c.as_slice())
-                    .collect::<Vec<&[u8]>>()
-                    .as_ref(),
-            );
-
-            let hashed_leaf = keccak::hashv(&[
-                &[1], //self.version().to_bytes()
-                id.as_ref(),
-                owner.as_ref(),
-                delegate.as_ref(),
-                nonce.to_le_bytes().as_ref(),
-                data_hash.as_ref(),
-                creator_hash.as_ref(),
-            ])
-            .to_bytes();
-            merkle.append(hashed_leaf).unwrap();
-            last_leaf_hash = hashed_leaf;
-            let changelog = merkle.change_logs[merkle.active_index as usize];
-            let path_len = changelog.path.len() as u32;
-            let mut path: Vec<spl_account_compression::state::PathNode> = changelog
-                .path
-                .iter()
-                .enumerate()
-                .map(|(lvl, n)| {
-                    spl_account_compression::state::PathNode::new(
-                        *n,
-                        (1 << (path_len - lvl as u32)) + (changelog.index >> lvl),
-                    )
-                })
-                .collect();
-            path.push(spl_account_compression::state::PathNode::new(changelog.root, 1));
-
-            let rolled_mint = BatchMintInstruction {
-                tree_update: ChangeLogEventV1 {
-                    id: tree,
-                    path: path.into_iter().map(Into::into).collect::<Vec<_>>(),
-                    seq: merkle.sequence_number,
-                    index: changelog.index,
-                },
-                leaf_update: LeafSchema::V1 {
-                    id,
-                    owner,
-                    delegate,
-                    nonce,
-                    data_hash: data_hash.to_bytes(),
-                    creator_hash: creator_hash.to_bytes(),
-                },
-                mint_args,
-                authority,
-                creator_signature: None,
-            };
-            mints.push(rolled_mint);
-        }
-        let batch_mint = BatchMint {
-            tree_id: tree,
-            raw_metadata_map: HashMap::new(),
-            max_depth: 10,
-            batch_mints: mints,
-            merkle_root: merkle.get_root(),
-            last_leaf_hash,
-            max_buffer_size: 32,
-        };
-
-        batch_mint
-    }
 
     #[tokio::test]
     async fn batch_mint_validation_test() {
