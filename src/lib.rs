@@ -1,5 +1,6 @@
 pub mod batch_mint_builder;
 pub mod batch_mint_client;
+pub mod batch_mint_validations;
 pub mod errors;
 pub mod merkle_tree_wrapper;
 pub mod model;
