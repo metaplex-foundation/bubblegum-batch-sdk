@@ -37,10 +37,6 @@ pub enum BatchMintValidationError {
     WrongChangeLogIndex(String, u32, u32),
     #[error("SplCompression: {0}")]
     SplCompression(#[from] spl_account_compression::ConcurrentMerkleTreeError),
-    #[error("Anchor {0}")]
-    Anchor(#[from] anchor_lang::error::Error),
-    #[error("FileChecksumMismatch: expected {0}, actual file hash {1}")]
-    FileChecksumMismatch(String, String),
     #[error("Unexpected tree depth={0} and max size={1}")]
     UnexpectedTreeSize(u32, u32),
     #[error("BatchMintError: {0}")]
