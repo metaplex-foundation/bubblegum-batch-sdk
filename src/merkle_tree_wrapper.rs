@@ -314,8 +314,7 @@ pub fn restore_canopy_depth_from_buffer(canopy_buffer_size: u32) -> u32 {
     if canopy_buffer_size < 64 {
         0
     } else {
-        let canopy_depth = (canopy_buffer_size / size_of::<Node>() as u32 + 2).ilog2() - 1;
-        canopy_depth
+        (canopy_buffer_size / size_of::<Node>() as u32 + 2).ilog2() - 1
     }
 }
 

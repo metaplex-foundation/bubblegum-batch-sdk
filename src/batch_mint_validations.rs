@@ -294,8 +294,8 @@ pub fn generate_batch_mint(size: usize) -> BatchMint {
         };
         let nonce = i as u64;
         let id = mpl_bubblegum::utils::get_asset_id(&tree, nonce);
-        let owner = authority.clone();
-        let delegate = authority.clone();
+        let owner = authority;
+        let delegate = authority;
 
         let metadata_args_hash = keccak::hashv(&[mint_args.try_to_vec().unwrap().as_slice()]);
         let data_hash = keccak::hashv(&[
@@ -363,7 +363,8 @@ pub fn generate_batch_mint(size: usize) -> BatchMint {
         };
         mints.push(rolled_mint);
     }
-    let batch_mint = BatchMint {
+
+    BatchMint {
         tree_id: tree,
         raw_metadata_map: HashMap::new(),
         max_depth: 10,
@@ -371,9 +372,7 @@ pub fn generate_batch_mint(size: usize) -> BatchMint {
         merkle_root: merkle.get_root(),
         last_leaf_hash,
         max_buffer_size: 32,
-    };
-
-    batch_mint
+    }
 }
 
 #[cfg(test)]

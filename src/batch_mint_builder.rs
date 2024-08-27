@@ -113,7 +113,7 @@ impl BatchMintBuilder {
 
         let batch_mint = BatchMintInstruction {
             tree_update: ChangeLogEventV1 {
-                id: self.tree_account.clone(),
+                id: self.tree_account,
                 path: path.into_iter().map(Into::into).collect::<Vec<_>>(),
                 seq: self.merkle.sequence_number(),
                 index: changelog.index(),
@@ -127,7 +127,7 @@ impl BatchMintBuilder {
                 creator_hash,
             },
             mint_args: metadata_args.clone(),
-            authority: owner.clone(),
+            authority: *owner,
             creator_signature: None,
         };
         self.mints.insert(nonce, batch_mint);
@@ -203,7 +203,7 @@ impl BatchMintBuilder {
 
     pub fn build_batch_mint(&self) -> std::result::Result<BatchMint, BatchMintError> {
         // make sure user did not miss any creator's signature
-        for (_, batch_mint) in &self.mints {
+        for batch_mint in self.mints.values() {
             for creator in &batch_mint.mint_args.creators {
                 if creator.verified {
                     if let Some(creator_signatures) = &batch_mint.creator_signature {
