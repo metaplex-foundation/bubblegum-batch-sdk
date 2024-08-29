@@ -43,7 +43,7 @@ pub enum BatchMintValidationError {
     BatchMint(String),
     #[error("Failed creator's signature verification: {0}")]
     FailedCreatorVerification(String),
-    #[error("Missing creator's signature in rollup: {0}")]
+    #[error("Missing creator's signature in batch mint: {0}")]
     MissingCreatorSignature(String),
     #[error("WrongCollectionVerified: {0}")]
     WrongCollectionVerified(String),
