@@ -314,6 +314,7 @@ impl BatchMintClient {
                 .collection_metadata(collection_config.collection_metadata)
                 .collection_authority_record_pda(collection_config.collection_authority_record_pda)
                 .mining(pubkey_util::get_mining_key(&staker))
+                .payer(payer.pubkey())
                 .instruction());
         }
         Ok(FinalizeTreeWithRootBuilder::new()
@@ -337,6 +338,7 @@ impl BatchMintClient {
             .compression_program(spl_account_compression::id())
             .system_program(system_program::id())
             .mining(pubkey_util::get_mining_key(&staker))
+            .payer(payer.pubkey())
             .instruction())
     }
 }
