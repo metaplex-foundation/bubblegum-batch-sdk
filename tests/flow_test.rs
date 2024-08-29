@@ -366,14 +366,6 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
         addr: spl_noop::ID,
         path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
     });
-    tvr.add_program(&ContractToDeploy {
-        addr: mplx_rewards::ID,
-        path: "../mplx-rewards/target/sbf-solana-solana/release/mplx_rewards.so".to_string(),
-    });
-    tvr.add_program(&ContractToDeploy {
-        addr: mplx_staking_states::ID,
-        path: "../mplx-staking/target/sbf-solana-solana/release/mplx_staking_states.so".to_string(),
-    });
 
     let tvp_process = tvr.run().unwrap();
 
