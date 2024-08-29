@@ -1057,6 +1057,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "mpl-bubblegum",
+ "mplx-rewards",
  "mplx-staking-states",
  "paste",
  "rand 0.8.5",

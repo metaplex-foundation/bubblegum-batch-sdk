@@ -313,7 +313,7 @@ impl BatchMintClient {
                 .collection_edition(collection_config.edition_account)
                 .collection_metadata(collection_config.collection_metadata)
                 .collection_authority_record_pda(collection_config.collection_authority_record_pda)
-                .mining(Pubkey::new_unique())
+                .mining(pubkey_util::get_mining_key(&staker))
                 .instruction());
         }
         Ok(FinalizeTreeWithRootBuilder::new()
@@ -336,7 +336,7 @@ impl BatchMintClient {
             .log_wrapper(spl_noop::id())
             .compression_program(spl_account_compression::id())
             .system_program(system_program::id())
-            .mining(Pubkey::new_unique())
+            .mining(pubkey_util::get_mining_key(&staker))
             .instruction())
     }
 }
