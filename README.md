@@ -33,16 +33,20 @@ TODO: add link to staking page.
 
 Example of batch minting:
 ```rust
-use batch_sdk::batch_mint_client::BatchMintClient;
+use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::signer::keypair::Keypair;
-use mpl_bubblegum::types::MetadataArgs;
+use mpl_bubblegum::types::{Collection, Creator, MetadataArgs, TokenProgramVersion, TokenStandard};
 use std::sync::Arc;
-use batch_sdk::model::CollectionConfig;
 use std::time::Duration;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Signer;
 
-let payer: Keypair = todo!("the one who pays for the batch mint");
-let staker: Keypair = todo!("can be same as payer");
+// the one who pays for the batch mint
+// also it's tree creator in this context
+let payer: Keypair = Keypair::new();
+// can be same as payer
+let staker: Keypair = Keypair::new();
 
 let url = "https://api.devnet.solana.com".to_string(); // Solana RPC node address
 let timeout = Duration::from_secs(1);
@@ -59,31 +63,66 @@ let tree_data_account = Keypair::new();
 // and canopy tree with depth 4 (not counting root).
 let sign = batch_mint_client.prepare_tree(
     &payer,
-    &tree_creator,
+    &payer,
     &tree_data_account,
     20, // tree depth
     256,// maximum concurrent changes
     4   // canopy tree depth
-).awailt()?;
+).await?;
 
 let batch_mint_builder = batch_mint_client.create_batch_mint_builder(&tree_data_account.pubkey())
     .await?;
 
 // Adding NTF asset
-let assets_to_add: &[(MetadataArgs, Pubkey, Pubkey)] = todo!("load/prepare");
+let assets_to_add: &[(MetadataArgs, Pubkey, Pubkey)] = &[
+    (
+        MetadataArgs {
+            name: "asset name".to_string(),
+            symbol: "symbol".to_string(),
+            uri: "https://asset.uri".to_string(),
+            // Royalty basis points that goes to creators in secondary sales (0-10000)
+            seller_fee_basis_points: 10,
+            primary_sale_happened: false,
+            is_mutable: true,
+            // nonce for easy calculation of editions, if present
+            edition_nonce: Some(1),
+            token_standard: Some(TokenStandard::NonFungibleEdition),
+            collection: Some(Collection {
+                verified: false,
+                key: Pubkey::new_unique(),
+            }),
+            uses: None,
+            token_program_version: TokenProgramVersion::Original,
+            creators: vec![Creator {
+                address: Pubkey::new_unique(),
+                verified: false,
+                // The percentage share.
+                //
+                // The value is a percentage, not basis points.
+                share: 5,
+            }],
+        },
+        Pubkey::new_unique(),
+        Pubkey::new_unique(),
+    )
+];
 for (asset, asset_owner, asset_delegate) in assets_to_add {
     batch_mint_builder.add_asset(&asset_owner, &asset_delegate, &asset);
 }
 
 // Creating batch mint object to be persisted in Arweave/IPFS/etc.
-let batch_mint = batch_mint_builder.build_batch_mint();
+let batch_mint = batch_mint_builder.build_batch_mint()?;
 
 // Persisting batch mint to Arweave, where it will
 // be picked up from by a DAS operator node.
 let mut batch_mint_json_bytes = Vec::<u8>::new();
 batch_mint.write_as_json(&mut batch_mint_json_bytes)?;
-let metadata_url: String = todo("save batch mint to arweave");
-let metadata_hash: String = todo("hash of persisted batch mint");
+// save batch mint JSON file to decentralized storage
+let metadata_url: String = "https://decentralize.storage/batch_minted_assets.json".to_string();
+// hash(xxhash) of persisted batch mint
+// hash can be count with xxhsum CLI tool
+// example: xxhsum batch_mint_assets.json
+let metadata_hash: String = "e1b2effd80ad2ada".to_string();
 
 // Finalize batch mint in solana:
 // "move" offchain merkle tree along with the canopy tree to the account.
@@ -92,9 +131,9 @@ let sign = batch_mint_client.finalize_tree(
     &metadata_url,
     &metadata_hash,
     &batch_mint_builder,
-    &tree_creator,
+    &payer,
     &staker
-)?;
+).await?;
 ```
 
 First we need to have an account with a stack in MPLX (TODO add stack details).
@@ -135,13 +174,13 @@ let mut batch_mint_builder = batch_mint_client.create_batch_mint_builder(&tree_d
     .await?;
 
 // Setup collection config if you want to add assets with verified collection
-let collection_authority = todo!("keypair for collection authority");
+let collection_authority = Keypair::new();
 batch_mint_builder.setup_collection_config(CollectionConfig {
     collection_authority,
     collection_authority_record_pda: None,
-    collection_mint: todo!("add collection pubkey"),
-    collection_metadata: todo!("add collection metadata pubkey"),
-    edition_account: todo!("add collection edition account pubkey"),
+    collection_mint: Pubkey::new_unique(),
+    collection_metadata: Pubkey::new_unique(),
+    edition_account: Pubkey::new_unique(),
 });
 ```
 All other steps are the same as regular batch mint
