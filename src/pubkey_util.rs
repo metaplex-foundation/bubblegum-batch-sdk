@@ -2,6 +2,7 @@ use mplx_rewards::utils::find_mining_program_address;
 use solana_sdk::pubkey;
 use solana_sdk::pubkey::Pubkey;
 
+// todo: import from package with staking/rewards constants
 pub const REWARD_POOL_ADDRESS: Pubkey = pubkey!("J9iTArkeHKahfAiKcFYKK128EC3rBr8ZyVthCE7TE6F9");
 
 pub fn get_registrar_key() -> Pubkey {
