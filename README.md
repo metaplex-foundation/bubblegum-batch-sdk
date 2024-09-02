@@ -121,6 +121,7 @@ batch_mint.write_as_json(&mut batch_mint_json_bytes)?;
 let metadata_url: String = "https://decentralize.storage/batch_minted_assets.json".to_string();
 // hash(xxhash) of persisted batch mint
 // hash can be count with xxhsum CLI tool
+// example: xxhsum batch_mint_assets.json
 let metadata_hash: String = "e1b2effd80ad2ada".to_string();
 
 // Finalize batch mint in solana:
