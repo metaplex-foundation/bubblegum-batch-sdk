@@ -138,8 +138,8 @@ impl BatchMintClient {
         &self,
         tree_account: &Pubkey,
     ) -> std::result::Result<BatchMintBuilder, BatchMintError> {
-        let (max_depth, max_buffer_size, canopy_depth) = read_prepared_tree_size(&self.client, &tree_account).await?;
-        BatchMintBuilder::new(tree_account.clone(), max_depth, max_buffer_size, canopy_depth)
+        let (max_depth, max_buffer_size, canopy_depth) = read_prepared_tree_size(&self.client, tree_account).await?;
+        BatchMintBuilder::new(*tree_account, max_depth, max_buffer_size, canopy_depth)
     }
 
     /// Turns a BatchMint object into a batch mint builder, so it can be filled with additional assets.
@@ -171,7 +171,7 @@ impl BatchMintClient {
                 creator_hash: _,
             } = leaf_update;
 
-            let metadata_arg_hash = batch_mint_builder.add_asset(owner, delegate, &mint_args)?;
+            let metadata_arg_hash = batch_mint_builder.add_asset(owner, delegate, mint_args)?;
 
             if let Some(creator_signature) = creator_signature {
                 let mut message_and_signature = HashMap::new();
@@ -208,14 +208,14 @@ impl BatchMintClient {
         let tree_data_info = TreeDataInfo::from_bytes(tree_data_account.data())?;
 
         if tree_data_info.canopy_depth > 0 {
-            let (canopy_to_add, canopy_offset) = calc_canopy_to_add(&tree_data_info, &batch_mint_builder)?;
+            let (canopy_to_add, canopy_offset) = calc_canopy_to_add(&tree_data_info, batch_mint_builder)?;
 
             let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
             for (ind, chunk) in canopy_to_add.chunks(CANOPY_NODES_PER_TX).enumerate() {
                 let add_canopy_inst = AddCanopyBuilder::new()
                     .tree_config(tree_config_account)
                     .merkle_tree(batch_mint_builder.tree_account)
-                    .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
+                    .tree_creator_or_delegate(tree_creator.pubkey()) // Correct?
                     .canopy_nodes(chunk.to_vec())
                     .start_index((canopy_offset + ind * CANOPY_NODES_PER_TX) as u32)
                     .log_wrapper(spl_noop::id())
@@ -240,7 +240,7 @@ impl BatchMintClient {
             .get_rightmost_proof()
             .iter()
             .map(|proof| AccountMeta {
-                pubkey: Pubkey::new_from_array(proof.clone()),
+                pubkey: Pubkey::new_from_array(*proof),
                 is_signer: false,
                 is_writable: false,
             })
@@ -250,7 +250,7 @@ impl BatchMintClient {
             batch_mint_builder,
             metadata_url,
             metadata_hash,
-            &remaining_accounts,
+            remaining_accounts.as_slice(),
             tree_config_account,
             staker.pubkey(),
             tree_creator.pubkey(),
@@ -274,13 +274,14 @@ impl BatchMintClient {
         Ok(signature)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn finalize_tree_instruction(
         &self,
         payer: &Keypair,
         batch_mint_builder: &BatchMintBuilder,
         metadata_url: &str,
         metadata_hash: &str,
-        remaining_accounts: &Vec<AccountMeta>,
+        remaining_accounts: &[AccountMeta],
         tree_config_account: Pubkey,
         staker: Pubkey,
         tree_creator: Pubkey,
@@ -312,6 +313,8 @@ impl BatchMintClient {
                 .collection_edition(collection_config.edition_account)
                 .collection_metadata(collection_config.collection_metadata)
                 .collection_authority_record_pda(collection_config.collection_authority_record_pda)
+                .mining(pubkey_util::get_mining_key(&staker))
+                .payer(payer.pubkey())
                 .instruction());
         }
         Ok(FinalizeTreeWithRootBuilder::new()
@@ -334,6 +337,8 @@ impl BatchMintClient {
             .log_wrapper(spl_noop::id())
             .compression_program(spl_account_compression::id())
             .system_program(system_program::id())
+            .mining(pubkey_util::get_mining_key(&staker))
+            .payer(payer.pubkey())
             .instruction())
     }
 }

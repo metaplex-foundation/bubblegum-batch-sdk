@@ -3,6 +3,7 @@ mod utils;
 use bubblegum::state::{REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
 use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
 use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
+use bubblegum_batch_sdk::pubkey_util::{get_mining_key, REWARD_POOL_ADDRESS};
 use mpl_bubblegum::types::MetadataArgs;
 use mplx_staking_states::state::{
     DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR,
@@ -260,7 +261,7 @@ async fn test_canopy_resume() {
         let add_canopy_inst = AddCanopyBuilder::new()
             .tree_config(tree_config_account)
             .merkle_tree(batch_mint_builder.tree_account)
-            .incoming_tree_delegate(tree_creator.pubkey()) // Correct?
+            .tree_creator_or_delegate(tree_creator.pubkey()) // Correct?
             .canopy_nodes(
                 batch_mint_builder
                     .canopy_leaves
@@ -346,12 +347,13 @@ where
 
 async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair) {
     // Preparing account for test
-    let (payer, tree_creator, tree_data_account, registrar, voter) = prepare_test_accounts();
+    let (payer, tree_creator, tree_data_account, registrar, voter, mining) = prepare_test_accounts();
 
     // Launching solana-test-validator with registrar and voter test accounts
     let mut tvr = TestValidatorRunner::new(port);
     tvr.add_account(&registrar);
     tvr.add_account(&voter);
+    tvr.add_account(&mining);
     tvr.add_program(&ContractToDeploy {
         addr: bubblegum::ID,
         path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
@@ -402,12 +404,12 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
 }
 
 /// FinalizeTreeWithRoot instruction, which is the final step for creating a batch mint
-/// requires registrar and voter accounts that are not easy to create.
+/// requires registrar, voter and mining accounts that are not easy to create.
 /// That's why for the testing purposes we manually create these accounts,
 /// by pushing them directly to solana-test-validator.
 ///
 /// The code of accounts initialization is taken from bubblegum program tests.
-fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountInit) {
+fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountInit, AccountInit) {
     let tree_creator = Keypair::from_bytes(TREE_CREATOR.as_ref()).unwrap();
 
     let tree_key = Keypair::from_bytes(TREE_KEY.as_ref()).unwrap();
@@ -420,6 +422,8 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
 
     let mplx_mint_key = Pubkey::new_unique();
     let grant_authority = Pubkey::new_unique();
+    let mining_key = get_mining_key(&payer.pubkey());
+    let reward_pool_key = REWARD_POOL_ADDRESS;
 
     let registrar_key = Pubkey::find_program_address(
         &[
@@ -454,7 +458,7 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
         voting_mints: [voting_mint_config, voting_mint_config],
         padding: [0, 0, 0, 0, 0, 0, 0],
         bump: 0,
-        reward_pool: Pubkey::new_unique(),
+        reward_pool: reward_pool_key,
     };
 
     let current_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
@@ -473,7 +477,7 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
     let deposit_entry = DepositEntry {
         lockup: lockup.clone(),
         delegate: Pubkey::new_unique(),
-        amount_deposited_native: 100000000,
+        amount_deposited_native: 100_000_000_000_000,
         voting_mint_config_idx: 0,
         is_used: true,
         _reserved0: [0; 32],
@@ -502,6 +506,11 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
 
     let mut voter_account = AccountSharedData::new(10000000000000000, voter_acc_data.len(), &mplx_staking_states::ID);
     voter_account.set_data_from_slice(voter_acc_data.as_ref());
+    let mut mining_acc_data = [0; mplx_rewards::state::WrappedMining::LEN];
+    mining_acc_data[32..64].copy_from_slice(&voter_authority.to_bytes());
+
+    let mut mining_account = AccountSharedData::new(10000000000000000, mining_acc_data.len(), &mplx_rewards::ID);
+    mining_account.set_data_from_slice(mining_acc_data.as_ref());
 
     (
         payer,
@@ -518,6 +527,12 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
             pubkey: voter_key,
             data: voter_acc_data,
             owner: mplx_staking_states::ID,
+        },
+        AccountInit {
+            name: "mining.json".to_string(),
+            pubkey: mining_key,
+            data: mining_acc_data.as_ref().to_vec(),
+            owner: mplx_rewards::ID,
         },
     )
 }

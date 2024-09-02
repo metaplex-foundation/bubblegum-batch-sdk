@@ -1,4 +1,9 @@
+use mplx_rewards::utils::find_mining_program_address;
+use solana_sdk::pubkey;
 use solana_sdk::pubkey::Pubkey;
+
+// todo: import from package with staking/rewards constants
+pub const REWARD_POOL_ADDRESS: Pubkey = pubkey!("J9iTArkeHKahfAiKcFYKK128EC3rBr8ZyVthCE7TE6F9");
 
 pub fn get_registrar_key() -> Pubkey {
     let (registrar_key, _) = Pubkey::find_program_address(
@@ -25,6 +30,10 @@ pub fn get_voter_key(registrar_account: &Pubkey, voter_authority: &Pubkey) -> Pu
         &mplx_staking_states::ID,
     );
     voter_key
+}
+
+pub fn get_mining_key(staker: &Pubkey) -> Pubkey {
+    find_mining_program_address(&mplx_rewards::id(), staker, &REWARD_POOL_ADDRESS).0
 }
 
 /// Account that hold additional merkle tree config,
