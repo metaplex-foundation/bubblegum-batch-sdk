@@ -3,12 +3,18 @@ mod utils;
 use bubblegum::state::{REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
 use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
 use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
+use bubblegum_batch_sdk::pubkey_util;
 use bubblegum_batch_sdk::pubkey_util::{get_mining_key, REWARD_POOL_ADDRESS};
 use mpl_bubblegum::types::MetadataArgs;
 use mplx_staking_states::state::{
     DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR,
 };
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_program::instruction::{AccountMeta, InstructionError};
+use solana_rpc_client_api::client_error::ErrorKind;
+use solana_rpc_client_api::request::{RpcError, RpcResponseErrorData};
+use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use solana_sdk::transaction::{Transaction, TransactionError};
 use solana_sdk::{account::AccountSharedData, pubkey::Pubkey, signature::Keypair, signer::Signer};
 use spl_account_compression::ConcurrentMerkleTree;
 use std::{
@@ -329,6 +335,116 @@ async fn test_canopy_resume() {
     }
 }
 
+#[tokio::test]
+#[cfg(not(any(skip_integration_tests)))]
+#[serial_test::serial]
+async fn test_finalize_canopy_tree_without_canopy_setup() {
+    // Prepare env
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8919).await;
+
+    // Starting testing
+    let batch_mint_client = BatchMintClient::new(solana_client.clone());
+
+    const DEPTH: usize = 5;
+    const BUFFER: usize = 8;
+    const CANOPY: u32 = 3;
+
+    let _sig_1 = batch_mint_client
+        .prepare_tree(
+            &payer,
+            &tree_creator,
+            &tree_data_account,
+            DEPTH as u32,
+            BUFFER as u32,
+            CANOPY,
+        )
+        .await
+        .unwrap();
+
+    let mut batch_mint_builder = batch_mint_client
+        .create_batch_mint_builder(&tree_data_account.pubkey())
+        .await
+        .unwrap();
+
+    for i in 1u8..(((1 << DEPTH) / 2) + 2) {
+        batch_mint_builder
+            .add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(i))
+            .unwrap();
+    }
+
+    // finalize_tree without canopy setup
+    let err = {
+        let tree_config_account = pubkey_util::derive_tree_config_account(&batch_mint_builder.tree_account);
+
+        // We're just using remaining_accounts to send proofs because they are of the same type
+        let remaining_accounts = batch_mint_builder
+            .merkle
+            .get_rightmost_proof()
+            .iter()
+            .map(|proof| AccountMeta {
+                pubkey: Pubkey::new_from_array(*proof),
+                is_signer: false,
+                is_writable: false,
+            })
+            .collect::<Vec<_>>();
+        let finalize_instruction = batch_mint_client
+            .finalize_tree_instruction(
+                &payer,
+                &batch_mint_builder,
+                "http://mymetadata.ololo/",
+                "mymetadatahash",
+                remaining_accounts.as_slice(),
+                tree_config_account,
+                payer.pubkey(),
+                tree_creator.pubkey(),
+            )
+            .unwrap();
+        let mut signing_keypairs = [&payer, &tree_creator, &payer].to_vec();
+        if let Some(ref collection_config) = batch_mint_builder.collection_config {
+            signing_keypairs.push(&collection_config.collection_authority);
+        }
+
+        let compute_budget = ComputeBudgetInstruction::set_compute_unit_limit(1000000);
+
+        let tx = Transaction::new_signed_with_payer(
+            &[compute_budget, finalize_instruction],
+            Some(&tree_creator.pubkey()),
+            signing_keypairs.as_slice(),
+            solana_client.get_latest_blockhash().await.unwrap(),
+        );
+
+        solana_client.send_and_confirm_transaction(&tx).await.err().unwrap()
+    };
+    match err.kind {
+        ErrorKind::RpcError(rpc_error) => match rpc_error {
+            RpcError::RpcResponseError {
+                code: _code,
+                message: _message,
+                data,
+            } => match data {
+                RpcResponseErrorData::SendTransactionPreflightFailure(simulate_tx_err) => {
+                    match simulate_tx_err.err.unwrap() {
+                        TransactionError::InstructionError(1, InstructionError::Custom(custom_error_idx)) => {
+                            assert_eq!(custom_error_idx, 6012)
+                        }
+                        e => panic!("Unexpected TransactionError error: {}", e),
+                    }
+                    let mut canopy_root_mismatch = false;
+                    simulate_tx_err.logs.unwrap().iter().for_each(|log| {
+                        if log.contains("CanopyRootMismatch") {
+                            canopy_root_mismatch = true
+                        }
+                    });
+                    assert!(canopy_root_mismatch)
+                }
+                e => panic!("Unexpected RpcResponseErrorData error: {}", e),
+            },
+            e => panic!("Unexpected RPC error: {}", e),
+        },
+        e => panic!("Unexpected solana error: {}", e),
+    }
+}
+
 /// Helps to wait for an async functionality to startup.
 async fn await_for<T, E, F, Fut>(attempts: u32, interval: Duration, f: F) -> std::result::Result<T, E>
 where
@@ -347,13 +463,13 @@ where
 
 async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair) {
     // Preparing account for test
-    let (payer, tree_creator, tree_data_account, registrar, voter, mining) = prepare_test_accounts();
+    let test_accounts = prepare_test_accounts();
 
     // Launching solana-test-validator with registrar and voter test accounts
     let mut tvr = TestValidatorRunner::new(port);
-    tvr.add_account(&registrar);
-    tvr.add_account(&voter);
-    tvr.add_account(&mining);
+    tvr.add_account(&test_accounts.registrar);
+    tvr.add_account(&test_accounts.voter);
+    tvr.add_account(&test_accounts.mining);
     tvr.add_program(&ContractToDeploy {
         addr: bubblegum::ID,
         path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
@@ -366,6 +482,14 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
         addr: spl_noop::ID,
         path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
     });
+    // tvr.add_program(&ContractToDeploy {
+    //     addr: mplx_rewards::ID,
+    //     path: "../mplx-rewards/target/sbf-solana-solana/release/mplx_rewards.so".to_string(),
+    // });
+    // tvr.add_program(&ContractToDeploy {
+    //     addr: mpl_staking::ID,
+    //     path: "../mplx-staking/target/sbf-solana-solana/release/mpl_staking.so".to_string(),
+    // });
 
     let tvp_process = tvr.run().unwrap();
 
@@ -380,11 +504,11 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
     {
         // Fund test accounts and wait for transaction to be commited.
         let airdrop_sig_1 = solana_client
-            .request_airdrop(&payer.pubkey(), 20000000 * 10000)
+            .request_airdrop(&test_accounts.payer.pubkey(), 20000000 * 10000)
             .await
             .unwrap();
         let airdrop_sig_2 = solana_client
-            .request_airdrop(&tree_creator.pubkey(), 20000000 * 10000)
+            .request_airdrop(&test_accounts.tree_creator.pubkey(), 20000000 * 10000)
             .await
             .unwrap();
         while !(solana_client.confirm_transaction(&airdrop_sig_1).await.unwrap()
@@ -397,10 +521,19 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
     (
         ChildProcess(tvp_process),
         solana_client,
-        payer,
-        tree_creator,
-        tree_data_account,
+        test_accounts.payer,
+        test_accounts.tree_creator,
+        test_accounts.tree_data_account,
     )
+}
+
+struct TestAccounts {
+    payer: Keypair,
+    tree_creator: Keypair,
+    tree_data_account: Keypair,
+    registrar: AccountInit,
+    voter: AccountInit,
+    mining: AccountInit,
 }
 
 /// FinalizeTreeWithRoot instruction, which is the final step for creating a batch mint
@@ -409,7 +542,7 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
 /// by pushing them directly to solana-test-validator.
 ///
 /// The code of accounts initialization is taken from bubblegum program tests.
-fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountInit, AccountInit) {
+fn prepare_test_accounts() -> TestAccounts {
     let tree_creator = Keypair::from_bytes(TREE_CREATOR.as_ref()).unwrap();
 
     let tree_key = Keypair::from_bytes(TREE_KEY.as_ref()).unwrap();
@@ -465,11 +598,11 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
 
     let lockup = Lockup {
         start_ts: 0,
-        end_ts: current_time + 100,
+        end_ts: current_time + Duration::from_secs(1000).as_millis() as u64,
         cooldown_ends_at: 0,
         cooldown_requested: false,
         kind: LockupKind::Constant,
-        period: LockupPeriod::ThreeMonths,
+        period: LockupPeriod::OneYear,
         _reserved0: [0; 16],
         _reserved1: [0; 5],
     };
@@ -512,29 +645,29 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
     let mut mining_account = AccountSharedData::new(10000000000000000, mining_acc_data.len(), &mplx_rewards::ID);
     mining_account.set_data_from_slice(mining_acc_data.as_ref());
 
-    (
+    TestAccounts {
         payer,
         tree_creator,
-        tree_key,
-        AccountInit {
+        tree_data_account: tree_key,
+        registrar: AccountInit {
             name: "registrar.json".to_string(),
             pubkey: registrar_key,
             data: registrar_acc_data,
             owner: mplx_staking_states::ID,
         },
-        AccountInit {
+        voter: AccountInit {
             name: "voter.json".to_string(),
             pubkey: voter_key,
             data: voter_acc_data,
             owner: mplx_staking_states::ID,
         },
-        AccountInit {
+        mining: AccountInit {
             name: "mining.json".to_string(),
             pubkey: mining_key,
             data: mining_acc_data.as_ref().to_vec(),
             owner: mplx_rewards::ID,
         },
-    )
+    }
 }
 
 fn make_test_metadata(index: u8) -> MetadataArgs {

@@ -275,7 +275,7 @@ impl BatchMintClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn finalize_tree_instruction(
+    pub fn finalize_tree_instruction(
         &self,
         payer: &Keypair,
         batch_mint_builder: &BatchMintBuilder,
