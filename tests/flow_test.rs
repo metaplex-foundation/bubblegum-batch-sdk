@@ -1,7 +1,8 @@
 mod utils;
 
-use bubblegum::state::{REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
+use bubblegum::state::{MINIMUM_WEIGHTED_STAKE, REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
 use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
+use bubblegum_batch_sdk::errors::BatchMintError;
 use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
 use bubblegum_batch_sdk::pubkey_util;
 use bubblegum_batch_sdk::pubkey_util::{get_mining_key, REWARD_POOL_ADDRESS};
@@ -49,7 +50,8 @@ const TEST_PAYER: &[u8] = &[
 #[serial_test::serial]
 async fn test_complete_batch_mint_flow() {
     // Prepare env
-    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8899).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) =
+        prepare_bubblegum_test_env(8899, MINIMUM_WEIGHTED_STAKE / LockupPeriod::OneYear.multiplier()).await;
 
     // Starting testing
     let batch_mint_client = BatchMintClient::new(solana_client.clone());
@@ -135,9 +137,124 @@ async fn test_complete_batch_mint_flow() {
 #[tokio::test]
 #[cfg(not(any(skip_integration_tests)))]
 #[serial_test::serial]
+async fn prepare_tree_without_enough_stake() {
+    // Prepare env
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) =
+        prepare_bubblegum_test_env(8899, (MINIMUM_WEIGHTED_STAKE / LockupPeriod::OneYear.multiplier()) - 1).await;
+
+    // Starting testing
+    let batch_mint_client = BatchMintClient::new(solana_client.clone());
+
+    const DEPTH: usize = 10;
+    const BUFFER: usize = 32;
+    const CANOPY: u32 = 3;
+
+    let _sig_1 = batch_mint_client
+        .prepare_tree(
+            &payer,
+            &tree_creator,
+            &tree_data_account,
+            DEPTH as u32,
+            BUFFER as u32,
+            CANOPY,
+        )
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[cfg(not(any(skip_integration_tests)))]
+#[serial_test::serial]
+async fn finalize_tree_without_enough_stake_fails() {
+    // Prepare env
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) =
+        prepare_bubblegum_test_env(8899, (MINIMUM_WEIGHTED_STAKE / LockupPeriod::OneYear.multiplier()) - 1).await;
+
+    // Starting testing
+    let batch_mint_client = BatchMintClient::new(solana_client.clone());
+
+    const DEPTH: usize = 10;
+    const BUFFER: usize = 32;
+    const CANOPY: u32 = 3;
+
+    let _sig_1 = batch_mint_client
+        .prepare_tree(
+            &payer,
+            &tree_creator,
+            &tree_data_account,
+            DEPTH as u32,
+            BUFFER as u32,
+            CANOPY,
+        )
+        .await
+        .unwrap();
+
+    let mut batch_mint_builder = batch_mint_client
+        .create_batch_mint_builder(&tree_data_account.pubkey())
+        .await
+        .unwrap();
+    println!(
+        "BatchMint builder size: {}, {}, {}",
+        batch_mint_builder.max_depth, batch_mint_builder.max_buffer_size, batch_mint_builder.canopy_depth
+    );
+
+    batch_mint_builder
+        .add_asset(&payer.pubkey(), &payer.pubkey(), &make_test_metadata(1u8))
+        .unwrap();
+
+    let err = batch_mint_client
+        .finalize_tree(
+            &payer,
+            "http://mymetadata.ololo/",
+            "mymetadatahash",
+            &batch_mint_builder,
+            &tree_creator,
+            &payer,
+        )
+        .await
+        .err()
+        .unwrap();
+
+    match err {
+        BatchMintError::SolanaClientErr(e) => match e.kind {
+            ErrorKind::RpcError(rpc_error) => match rpc_error {
+                RpcError::RpcResponseError {
+                    code: _code,
+                    message: _message,
+                    data,
+                } => match data {
+                    RpcResponseErrorData::SendTransactionPreflightFailure(simulate_tx_err) => {
+                        match simulate_tx_err.err.unwrap() {
+                            TransactionError::InstructionError(1, InstructionError::Custom(custom_error_idx)) => {
+                                assert_eq!(custom_error_idx, 6042)
+                            }
+                            e => panic!("Unexpected TransactionError error: {}", e),
+                        }
+                        let mut canopy_root_mismatch = false;
+                        simulate_tx_err.logs.unwrap().iter().for_each(|log| {
+                            if log.contains("NotEnoughStakeForOperation") {
+                                canopy_root_mismatch = true
+                            }
+                        });
+                        assert!(canopy_root_mismatch)
+                    }
+                    e => panic!("Unexpected RpcResponseErrorData error: {}", e),
+                },
+                e => panic!("Unexpected RPC error: {}", e),
+            },
+            e => panic!("Unexpected solana error: {}", e),
+        },
+        e => panic!("Unexpected BatchMintError error: {}", e),
+    }
+}
+
+#[tokio::test]
+#[cfg(not(any(skip_integration_tests)))]
+#[serial_test::serial]
 async fn test_half_filled_assets() {
     // Prepare env
-    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8909).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) =
+        prepare_bubblegum_test_env(8909, MINIMUM_WEIGHTED_STAKE / LockupPeriod::OneYear.multiplier()).await;
 
     // Starting testing
     let batch_mint_client = BatchMintClient::new(solana_client.clone());
@@ -229,7 +346,8 @@ async fn test_canopy_resume() {
     use bubblegum_batch_sdk::pubkey_util;
     use mpl_bubblegum::instructions::AddCanopyBuilder;
     use solana_sdk::{system_program, transaction::Transaction};
-    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8919).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) =
+        prepare_bubblegum_test_env(8919, MINIMUM_WEIGHTED_STAKE / LockupPeriod::OneYear.multiplier()).await;
 
     // Starting testing
     let batch_mint_client = BatchMintClient::new(solana_client.clone());
@@ -340,7 +458,8 @@ async fn test_canopy_resume() {
 #[serial_test::serial]
 async fn test_finalize_canopy_tree_without_canopy_setup() {
     // Prepare env
-    let (_validator, solana_client, payer, tree_creator, tree_data_account) = prepare_bubblegum_test_env(8919).await;
+    let (_validator, solana_client, payer, tree_creator, tree_data_account) =
+        prepare_bubblegum_test_env(8919, MINIMUM_WEIGHTED_STAKE / LockupPeriod::OneYear.multiplier()).await;
 
     // Starting testing
     let batch_mint_client = BatchMintClient::new(solana_client.clone());
@@ -461,9 +580,12 @@ where
     f().await
 }
 
-async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair) {
+async fn prepare_bubblegum_test_env(
+    port: u32,
+    stake_amount: u64,
+) -> (ChildProcess, Arc<RpcClient>, Keypair, Keypair, Keypair) {
     // Preparing account for test
-    let test_accounts = prepare_test_accounts();
+    let test_accounts = prepare_test_accounts(stake_amount);
 
     // Launching solana-test-validator with registrar and voter test accounts
     let mut tvr = TestValidatorRunner::new(port);
@@ -482,14 +604,6 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
         addr: spl_noop::ID,
         path: "../mpl-bubblegum/programs/.bin/spl_noop.so".to_string(),
     });
-    // tvr.add_program(&ContractToDeploy {
-    //     addr: mplx_rewards::ID,
-    //     path: "../mplx-rewards/target/sbf-solana-solana/release/mplx_rewards.so".to_string(),
-    // });
-    // tvr.add_program(&ContractToDeploy {
-    //     addr: mpl_staking::ID,
-    //     path: "../mplx-staking/target/sbf-solana-solana/release/mpl_staking.so".to_string(),
-    // });
 
     let tvp_process = tvr.run().unwrap();
 
@@ -542,7 +656,7 @@ struct TestAccounts {
 /// by pushing them directly to solana-test-validator.
 ///
 /// The code of accounts initialization is taken from bubblegum program tests.
-fn prepare_test_accounts() -> TestAccounts {
+fn prepare_test_accounts(stake_amount: u64) -> TestAccounts {
     let tree_creator = Keypair::from_bytes(TREE_CREATOR.as_ref()).unwrap();
 
     let tree_key = Keypair::from_bytes(TREE_KEY.as_ref()).unwrap();
@@ -577,7 +691,7 @@ fn prepare_test_accounts() -> TestAccounts {
         &mplx_staking_states::ID,
     );
 
-    // // init structs for Registrar and Voter and fill it in with data
+    // init structs for Registrar and Voter and fill it in with data
     let voting_mint_config = VotingMintConfig {
         mint: mplx_mint_key,
         grant_authority,
@@ -610,7 +724,7 @@ fn prepare_test_accounts() -> TestAccounts {
     let deposit_entry = DepositEntry {
         lockup: lockup.clone(),
         delegate: Pubkey::new_unique(),
-        amount_deposited_native: 100_000_000_000_000,
+        amount_deposited_native: 0,
         voting_mint_config_idx: 0,
         is_used: true,
         _reserved0: [0; 32],
@@ -618,7 +732,17 @@ fn prepare_test_accounts() -> TestAccounts {
         delegate_last_update_ts: 0,
     };
 
-    let deposit_entries = [deposit_entry; 32];
+    let mut deposit_entries = [deposit_entry; 32];
+    deposit_entries[0] = DepositEntry {
+        lockup: lockup.clone(),
+        delegate: Pubkey::new_unique(),
+        amount_deposited_native: stake_amount,
+        voting_mint_config_idx: 0,
+        is_used: true,
+        _reserved0: [0; 32],
+        _reserved1: [0; 6],
+        delegate_last_update_ts: 0,
+    };
 
     let voter = Voter {
         deposits: deposit_entries,
