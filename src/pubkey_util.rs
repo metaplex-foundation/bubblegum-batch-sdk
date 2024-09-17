@@ -10,19 +10,12 @@ use crate::errors::BatchMintError;
 // todo: import from package with staking/rewards constants
 pub const REWARD_POOL_ADDRESS: Pubkey = pubkey!("J9iTArkeHKahfAiKcFYKK128EC3rBr8ZyVthCE7TE6F9");
 
-pub fn get_registrar_key() -> std::result::Result<Pubkey, BatchMintError> {
-    let realm_key = Pubkey::from_str(DAO_PUBKEY)?;
-    let realm_governing_mint = Pubkey::from_str(DAO_GOVERNING_MINT)?;
-
+pub fn get_registrar_key() -> Pubkey {
     let (registrar_key, _) = Pubkey::find_program_address(
-        &[
-            realm_key.to_bytes().as_ref(),
-            b"registrar".as_ref(),
-            realm_governing_mint.to_bytes().as_ref(),
-        ],
+        &[DAO_PUBKEY.as_ref(), b"registrar".as_ref(), DAO_GOVERNING_MINT.as_ref()],
         &mplx_staking_states::ID,
     );
-    Ok(registrar_key)
+    registrar_key
 }
 
 /// ## Arguments

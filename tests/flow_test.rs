@@ -1,10 +1,10 @@
 mod utils;
 
-use bubblegum::state::{REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
 use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
 use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
 use bubblegum_batch_sdk::pubkey_util::{get_mining_key, REWARD_POOL_ADDRESS};
 use mpl_bubblegum::types::MetadataArgs;
+use mpl_common_constants::constants::{DAO_GOVERNING_MINT, DAO_PUBKEY};
 use mplx_staking_states::state::{
     DepositEntry, Lockup, LockupKind, LockupPeriod, Registrar, Voter, VotingMintConfig, REGISTRAR_DISCRIMINATOR,
 };
@@ -37,6 +37,8 @@ const TEST_PAYER: &[u8] = &[
     213, 244, 111, 208, 225, 229, 30, 245, 66, 48, 225, 173, 117, 132, 129, 214, 176, 176, 39, 241, 9, 144, 79, 223,
     161, 99, 89, 97, 163, 63, 51, 106, 80, 233, 168, 246, 140, 97, 17,
 ];
+
+pub const VOTER_DISCRIMINATOR: [u8; 8] = [241, 93, 35, 191, 254, 147, 17, 202];
 
 #[tokio::test]
 #[cfg(not(any(skip_integration_tests)))]
@@ -355,7 +357,7 @@ async fn prepare_bubblegum_test_env(port: u32) -> (ChildProcess, Arc<RpcClient>,
     tvr.add_account(&voter);
     tvr.add_account(&mining);
     tvr.add_program(&ContractToDeploy {
-        addr: bubblegum::ID,
+        addr: mpl_bubblegum::ID,
         path: "../mpl-bubblegum/programs/.bin/bubblegum.so".to_string(),
     });
     tvr.add_program(&ContractToDeploy {
@@ -426,11 +428,7 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
     let reward_pool_key = REWARD_POOL_ADDRESS;
 
     let registrar_key = Pubkey::find_program_address(
-        &[
-            REALM.to_bytes().as_ref(),
-            b"registrar".as_ref(),
-            REALM_GOVERNING_MINT.to_bytes().as_ref(),
-        ],
+        &[DAO_PUBKEY.as_ref(), b"registrar".as_ref(), DAO_GOVERNING_MINT.as_ref()],
         &mplx_staking_states::ID,
     )
     .0;
@@ -452,8 +450,8 @@ fn prepare_test_accounts() -> (Keypair, Keypair, Keypair, AccountInit, AccountIn
 
     let registrar = Registrar {
         governance_program_id,
-        realm: REALM,
-        realm_governing_token_mint: REALM_GOVERNING_MINT,
+        realm: Pubkey::new_from_array(DAO_PUBKEY),
+        realm_governing_token_mint: Pubkey::new_from_array(DAO_GOVERNING_MINT),
         realm_authority,
         voting_mints: [voting_mint_config, voting_mint_config],
         padding: [0, 0, 0, 0, 0, 0, 0],

@@ -288,7 +288,7 @@ impl BatchMintClient {
         staker: Pubkey,
         tree_creator: Pubkey,
     ) -> std::result::Result<Instruction, BatchMintError> {
-        let fee_receiver_key = Pubkey::from_str(FEE_RECEIVER)?;
+        let fee_receiver_key = Pubkey::new_from_array(FEE_RECEIVER);
 
         let batch_mint = batch_mint_builder.build_batch_mint()?;
         if let Some(ref collection_config) = batch_mint_builder.collection_config {
@@ -298,9 +298,9 @@ impl BatchMintClient {
                 .staker(staker)
                 .fee_receiver(fee_receiver_key)
                 .tree_creator_or_delegate(tree_creator) // Correct?
-                .registrar(pubkey_util::get_registrar_key()?)
+                .registrar(pubkey_util::get_registrar_key())
                 .voter(pubkey_util::get_voter_key(
-                    &pubkey_util::get_registrar_key()?,
+                    &pubkey_util::get_registrar_key(),
                     &payer.pubkey(),
                 ))
                 .root(batch_mint.merkle_root)
@@ -327,9 +327,9 @@ impl BatchMintClient {
             .staker(staker)
             .fee_receiver(fee_receiver_key)
             .tree_creator_or_delegate(tree_creator) // Correct?
-            .registrar(pubkey_util::get_registrar_key()?)
+            .registrar(pubkey_util::get_registrar_key())
             .voter(pubkey_util::get_voter_key(
-                &pubkey_util::get_registrar_key()?,
+                &pubkey_util::get_registrar_key(),
                 &payer.pubkey(),
             ))
             .root(batch_mint.merkle_root)
