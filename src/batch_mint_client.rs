@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use mpl_bubblegum::accounts::MerkleTree;
@@ -6,6 +7,7 @@ use mpl_bubblegum::instructions::{
     AddCanopyBuilder, FinalizeTreeWithRootAndCollectionBuilder, FinalizeTreeWithRootBuilder, PrepareTreeBuilder,
 };
 use mpl_bubblegum::types::{ConcurrentMerkleTreeHeaderData, LeafSchema};
+use mpl_common_constants::constants::FEE_RECEIVER;
 use solana_sdk::account::{Account, ReadableAccount};
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 use solana_sdk::instruction::AccountMeta;
@@ -85,7 +87,7 @@ impl BatchMintClient {
             ));
         }
 
-        let required_canopy = max_depth.saturating_sub(bubblegum::state::MAX_ACC_PROOFS_SIZE);
+        let required_canopy = max_depth.saturating_sub(mpl_bubblegum::MAX_ACC_PROOFS_SIZE);
         if canopy_depth < required_canopy {
             return Err(BatchMintError::IllegalArgumets(format!(
                 "Three of depth={max_depth} requires as least canopy={required_canopy}"
@@ -286,13 +288,15 @@ impl BatchMintClient {
         staker: Pubkey,
         tree_creator: Pubkey,
     ) -> std::result::Result<Instruction, BatchMintError> {
+        let fee_receiver_key = Pubkey::new_from_array(FEE_RECEIVER);
+
         let batch_mint = batch_mint_builder.build_batch_mint()?;
         if let Some(ref collection_config) = batch_mint_builder.collection_config {
             return Ok(FinalizeTreeWithRootAndCollectionBuilder::new()
                 .merkle_tree(batch_mint.tree_id)
                 .tree_config(tree_config_account)
                 .staker(staker)
-                .fee_receiver(bubblegum::state::FEE_RECEIVER)
+                .fee_receiver(fee_receiver_key)
                 .tree_creator_or_delegate(tree_creator) // Correct?
                 .registrar(pubkey_util::get_registrar_key())
                 .voter(pubkey_util::get_voter_key(
@@ -321,7 +325,7 @@ impl BatchMintClient {
             .merkle_tree(batch_mint.tree_id)
             .tree_config(tree_config_account)
             .staker(staker)
-            .fee_receiver(bubblegum::state::FEE_RECEIVER)
+            .fee_receiver(fee_receiver_key)
             .tree_creator_or_delegate(tree_creator) // Correct?
             .registrar(pubkey_util::get_registrar_key())
             .voter(pubkey_util::get_voter_key(
