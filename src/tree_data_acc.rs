@@ -34,6 +34,7 @@ impl<'a> TreeDataInfo<'a> {
                 max_depth,
                 authority: _,
                 creation_slot: _,
+                is_batch_initialized: _,
                 padding: _,
             } => (max_depth, max_buffer_size),
         };
