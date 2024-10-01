@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use mpl_bubblegum::accounts::MerkleTree;
@@ -364,6 +363,7 @@ fn parse_tree_size(tree_account: &Account) -> std::result::Result<(u32, u32, u32
             max_depth,
             authority: _,
             creation_slot: _,
+            is_batch_initialized: _,
             padding: _,
         } => (max_depth, max_buffer_size),
     };

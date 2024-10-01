@@ -1,6 +1,5 @@
 mod utils;
 
-use bubblegum::state::{MINIMUM_WEIGHTED_STAKE, REALM, REALM_GOVERNING_MINT, VOTER_DISCRIMINATOR};
 use bubblegum_batch_sdk::batch_mint_client::BatchMintClient;
 use bubblegum_batch_sdk::errors::BatchMintError;
 use bubblegum_batch_sdk::merkle_tree_wrapper::{calc_canopy_size, calc_merkle_tree_size};
@@ -47,6 +46,7 @@ const TEST_PAYER: &[u8] = &[
 ];
 
 pub const VOTER_DISCRIMINATOR: [u8; 8] = [241, 93, 35, 191, 254, 147, 17, 202];
+const MINIMUM_WEIGHTED_STAKE: u64 = 30_000_000_000_000; // 30 weighted MPLX
 
 #[tokio::test]
 #[cfg(not(any(skip_integration_tests)))]
