@@ -373,6 +373,7 @@ dependencies = [
  "anchor-derive-accounts 0.29.0",
  "anchor-derive-serde",
  "anchor-derive-space",
+ "anchor-syn 0.29.0",
  "arrayref",
  "base64 0.13.1",
  "bincode",
@@ -824,7 +825,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blockbuster"
 version = "2.4.0"
-source = "git+https://github.com/metaplex-foundation/blockbuster.git?rev=c4c2c95#c4c2c95a4a03c8e44f6be30d838a1606ecfca8b0"
+source = "git+https://github.com/metaplex-foundation/blockbuster.git?rev=59e983a#59e983acca676ba02dc1d836002363db48585454"
 dependencies = [
  "anchor-lang 0.29.0",
  "async-trait",
@@ -4571,9 +4572,9 @@ dependencies = [
 
 [[package]]
 name = "spl-account-compression"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31f461e20e8efb539d7f3f30cd82931ee128651c6366abe326f083b07253a1d6"
+checksum = "8ce8314ec6ae26084ec7c6c0802c3dc173ee86aee5f5d5026a3f82c52cfe1c07"
 dependencies = [
  "anchor-lang 0.29.0",
  "bytemuck",
@@ -4616,9 +4617,9 @@ dependencies = [
 
 [[package]]
 name = "spl-concurrent-merkle-tree"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85d1bbb97252d8a1b90d3d56425038928382a306b71dbba4c836973c94b33f96"
+checksum = "a14033366e14117679851c7759c3d66c6430a495f0523bd88076d3a275828931"
 dependencies = [
  "bytemuck",
  "solana-program",
