@@ -29,16 +29,21 @@ solana-sdk = "~1.18.11"
 solana-program = "~1.18.11"
 solana-client = "~1.18.11"
 solana-rpc-client-api = "~1.18.11"
-mpl-common-constants = { git = "https://github.com/adm-metaex/mpl-common-constants.git", branch = "main" }
-mpl-bubblegum = { git = "https://github.com/adm-metaex/mpl-bubblegum.git", rev = "d27bc9b", features = ["serde"] }
-spl-account-compression = { git = "https://github.com/StanChe/solana-program-library.git", rev = "f343436", features = ["no-entrypoint"] }
-spl-concurrent-merkle-tree = { git = "https://github.com/StanChe/solana-program-library.git", rev = "f343436", default-features = false }
-spl-merkle-tree-reference = { git = "https://github.com/StanChe/solana-program-library.git", rev = "f343436" }
-spl-noop = { git = "https://github.com/StanChe/solana-program-library.git", rev = "f343436", features = ["no-entrypoint"] }
-mplx-staking-states = { git = "https://github.com/adm-metaex/mplx-staking.git" }
-mplx-rewards = { git = "https://github.com/adm-metaex/mplx-rewards.git", features = ["no-entrypoint"] }
 
-blockbuster = { git = "https://github.com/adm-metaex/blockbuster", rev = "9cdc565" }
+mpl-common-constants = { git = "https://github.com/adm-metaex/mpl-common-constants.git", branch = "main" }
+
+mpl-bubblegum = { git = "https://github.com/metaplex-foundation/mpl-bubblegum.git", rev = "07678e6", features = ["serde"] }
+
+spl-account-compression = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab", features = ["no-entrypoint"] }
+spl-concurrent-merkle-tree = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab", default-features = false }
+spl-merkle-tree-reference = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab" }
+spl-noop = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab", features = ["no-entrypoint"] }
+
+blockbuster = { git = "https://github.com/metaplex-foundation/blockbuster.git", rev = "1e6660d" }
+
+mplx-staking-states = { git = "https://github.com/metaplex-foundation/aura-staking.git" }
+mplx-rewards = { git = "https://github.com/metaplex-foundation/aura-rewards.git", features = ["no-entrypoint"] }
+
 rand = "0.8.5"
 
 [dev-dependencies]
