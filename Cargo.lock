@@ -824,7 +824,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blockbuster"
 version = "2.4.0"
-source = "git+https://github.com/metaplex-foundation/blockbuster.git?rev=1e6660d#1e6660d1dca52e96569531a0264162e35a570a3d"
+source = "git+https://github.com/metaplex-foundation/blockbuster.git?rev=c4c2c95#c4c2c95a4a03c8e44f6be30d838a1606ecfca8b0"
 dependencies = [
  "anchor-lang 0.29.0",
  "async-trait",
@@ -4572,7 +4572,8 @@ dependencies = [
 [[package]]
 name = "spl-account-compression"
 version = "0.4.0"
-source = "git+https://github.com/solana-labs/solana-program-library.git?rev=b8615ab#b8615ab735897b5134dae251ff239461b08ae1dc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31f461e20e8efb539d7f3f30cd82931ee128651c6366abe326f083b07253a1d6"
 dependencies = [
  "anchor-lang 0.29.0",
  "bytemuck",
@@ -4616,7 +4617,8 @@ dependencies = [
 [[package]]
 name = "spl-concurrent-merkle-tree"
 version = "0.4.0"
-source = "git+https://github.com/solana-labs/solana-program-library.git?rev=b8615ab#b8615ab735897b5134dae251ff239461b08ae1dc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85d1bbb97252d8a1b90d3d56425038928382a306b71dbba4c836973c94b33f96"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -4678,8 +4680,9 @@ dependencies = [
 
 [[package]]
 name = "spl-merkle-tree-reference"
-version = "0.1.0"
-source = "git+https://github.com/solana-labs/solana-program-library.git?rev=b8615ab#b8615ab735897b5134dae251ff239461b08ae1dc"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70d540c0983d5214dbba3cc7f708e2f5ac7d99294e1f633fd36178a22434285d"
 dependencies = [
  "solana-program",
  "thiserror",
@@ -4688,7 +4691,8 @@ dependencies = [
 [[package]]
 name = "spl-noop"
 version = "0.2.0"
-source = "git+https://github.com/solana-labs/solana-program-library.git?rev=b8615ab#b8615ab735897b5134dae251ff239461b08ae1dc"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6dd67ea3d0070a12ff141f5da46f9695f49384a03bce1203a5608f5739437950"
 dependencies = [
  "solana-program",
 ]
@@ -5401,9 +5405,9 @@ checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
 name = "uuid"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
+checksum = "f8c5f0a0af699448548ad1a2fbf920fb4bee257eae39953ba95cb84891a0446a"
 
 [[package]]
 name = "vec_map"

@@ -34,12 +34,12 @@ mpl-common-constants = { git = "https://github.com/adm-metaex/mpl-common-constan
 
 mpl-bubblegum = { git = "https://github.com/metaplex-foundation/mpl-bubblegum.git", rev = "07678e6", features = ["serde"] }
 
-spl-account-compression = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab", features = ["no-entrypoint"] }
-spl-concurrent-merkle-tree = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab", default-features = false }
-spl-merkle-tree-reference = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab" }
-spl-noop = { git = "https://github.com/solana-labs/solana-program-library.git", rev = "b8615ab", features = ["no-entrypoint"] }
+spl-account-compression = { version = "=0.4.0", features = ["no-entrypoint"] }
+spl-concurrent-merkle-tree = { version = "=0.4.0", default-features = false }
+spl-merkle-tree-reference = { version = "0.1.0" }
+spl-noop = { version = "0.2.0", features = ["no-entrypoint"] }
 
-blockbuster = { git = "https://github.com/metaplex-foundation/blockbuster.git", rev = "1e6660d" }
+blockbuster = { git = "https://github.com/metaplex-foundation/blockbuster.git", rev = "c4c2c95" }
 
 mplx-staking-states = { git = "https://github.com/metaplex-foundation/aura-staking.git" }
 mplx-rewards = { git = "https://github.com/metaplex-foundation/aura-rewards.git", features = ["no-entrypoint"] }
