@@ -106,7 +106,7 @@ impl From<&PathNode> for spl_account_compression::state::PathNode {
     }
 }
 
-impl From<&ChangeLogEventV1> for blockbuster::programs::bubblegum::ChangeLogEventV1 {
+impl From<&ChangeLogEventV1> for spl_account_compression::events::ChangeLogEventV1 {
     fn from(value: &ChangeLogEventV1) -> Self {
         Self {
             id: value.id,
@@ -116,8 +116,8 @@ impl From<&ChangeLogEventV1> for blockbuster::programs::bubblegum::ChangeLogEven
         }
     }
 }
-impl From<blockbuster::programs::bubblegum::ChangeLogEventV1> for ChangeLogEventV1 {
-    fn from(value: blockbuster::programs::bubblegum::ChangeLogEventV1) -> Self {
+impl From<spl_account_compression::events::ChangeLogEventV1> for ChangeLogEventV1 {
+    fn from(value: spl_account_compression::events::ChangeLogEventV1) -> Self {
         Self {
             id: value.id,
             path: value.path.into_iter().map(Into::into).collect::<Vec<_>>(),

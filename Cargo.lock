@@ -373,7 +373,6 @@ dependencies = [
  "anchor-derive-accounts 0.29.0",
  "anchor-derive-serde",
  "anchor-derive-space",
- "anchor-syn 0.29.0",
  "arrayref",
  "base64 0.13.1",
  "bincode",
@@ -825,7 +824,7 @@ checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 [[package]]
 name = "blockbuster"
 version = "2.4.0"
-source = "git+https://github.com/metaplex-foundation/blockbuster.git?rev=59e983a#59e983acca676ba02dc1d836002363db48585454"
+source = "git+https://github.com/metaplex-foundation/blockbuster.git?rev=0aa1878#0aa18784bf0e09d4ff43c9bc04b91b44c0a5a4ac"
 dependencies = [
  "anchor-lang 0.29.0",
  "async-trait",
@@ -834,8 +833,10 @@ dependencies = [
  "bytemuck",
  "lazy_static",
  "log",
+ "mpl-account-compression",
  "mpl-bubblegum",
  "mpl-core",
+ "mpl-noop",
  "mpl-token-metadata",
  "serde",
  "solana-sdk",
@@ -2436,6 +2437,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpl-account-compression"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2ad6a6ba15b2e880d43b94f40510f1b64f2981a843cfc7b8877919467d2ab1a"
+dependencies = [
+ "anchor-lang 0.29.0",
+ "bytemuck",
+ "mpl-noop",
+ "solana-program",
+ "spl-concurrent-merkle-tree",
+]
+
+[[package]]
 name = "mpl-bubblegum"
 version = "1.5.0"
 source = "git+https://github.com/metaplex-foundation/mpl-bubblegum.git?rev=07678e6#07678e698dfd0d12c3fdf44855e1bb7e8101443a"
@@ -2472,6 +2486,15 @@ dependencies = [
  "serde_with 3.11.0",
  "solana-program",
  "thiserror",
+]
+
+[[package]]
+name = "mpl-noop"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "179556a9254920ca8b150b18728d2f3106879f710c1ef5a049a8f0d5b03eede5"
+dependencies = [
+ "solana-program",
 ]
 
 [[package]]
@@ -4572,9 +4595,9 @@ dependencies = [
 
 [[package]]
 name = "spl-account-compression"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ce8314ec6ae26084ec7c6c0802c3dc173ee86aee5f5d5026a3f82c52cfe1c07"
+checksum = "2785042005954aec5d5db7fcb99a78754b222be906a89d10a3d66ebdbc8e9548"
 dependencies = [
  "anchor-lang 0.29.0",
  "bytemuck",
