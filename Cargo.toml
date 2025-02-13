@@ -39,7 +39,7 @@ spl-concurrent-merkle-tree = { version = "0.4.1", default-features = false }
 spl-merkle-tree-reference = { version = "0.1.0" }
 spl-noop = { version = "0.2.0", features = ["no-entrypoint"] }
 
-blockbuster = { git = "https://github.com/metaplex-foundation/blockbuster.git", rev = "0aa1878" }
+blockbuster = { git = "https://github.com/metaplex-foundation/blockbuster.git", rev = "bae10fc" }
 
 mplx-staking-states = { git = "https://github.com/metaplex-foundation/aura-staking.git" }
 mplx-rewards = { git = "https://github.com/metaplex-foundation/aura-rewards.git", features = ["no-entrypoint"] }
